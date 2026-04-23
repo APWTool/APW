@@ -44,37 +44,44 @@
             }
         }
 
-        function berechneBKM(lat, lon) {
-            if (!strassenDaten) return;
+function berechneBKM(lat, lon) {
+    if (!strassenDaten) return;
 
-            const aktuellerPunkt = turf.point([lon, lat]);
-            
-            // Sucht das nächste Liniensegment aus deiner JSON
-            const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
-            
-            // Zugriff auf deine spezifischen Spaltennamen
-            const props = snapped.properties;
-            
-            const strasse = (props.STRKL || "") + (props.STRNR || ""); // z.B. A1
-            const abschnitt = props.ABSNR || "Unbekannt";
-            
-            // WICHTIG: Prüfe in deiner JSON, ob der Start-Kilometer STAT_VON heißt.
-            // Falls er anders heißt (z.B. BKM_VON), hier anpassen:
-            const startBKM = parseFloat(props.STAT_VON) || 0; 
-            
-            // 'location' ist die Distanz vom Anfang des Linienstücks zum snapped Point (in km)
-            const distanzAufAbschnitt = props.location; 
-            
-            const aktuellerBKM = (startBKM + distanzAufAbschnitt).toFixed(3);
+    const aktuellerPunkt = turf.point([lon, lat]);
+    
+    // Sucht das nächste Liniensegment
+    const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
+    const props = snapped.properties;
+    
+    // 1. Straßenbezeichnung zusammenbauen (z.B. L11)
+    const strasse = (props.STRKL || "") + (props.STRNR || "");
+    
+    // 2. Abschnittsnummer (Nutzt jetzt ABSNR aus deiner Syntax)
+    const abschnitt = props.ABSNR || "Unbekannt";
+    
+    // 3. Start-Punkt des Abschnitts (STATANF laut deiner Syntax)
+    // Wir gehen davon aus, dass STATANF in Metern angegeben ist (z.B. 0 oder 2500)
+    const startMeter = parseFloat(props.STATANF) || 0;
+    
+    // 4. Distanz auf dem Abschnitt berechnen
+    // turf.nearestPointOnLine gibt 'location' in KILOMETERN zurück.
+    // Wir rechnen dies in METER um (* 1000).
+    const gefahreneMeterAufAbschnitt = snapped.properties.location * 1000;
+    
+    // Gesamtmeter berechnen
+    const gesamtMeter = startMeter + gefahreneMeterAufAbschnitt;
+    
+    // 5. Umrechnung in Kilometer-Anzeige (BKM-Format: 3,831)
+    const aktuellerBKM = (gesamtMeter / 1000).toFixed(3);
 
-            // In HTML anzeigen
-            document.getElementById('ausgabe').innerHTML = `
-                <strong>Straße:</strong> ${strasse} (Abschnitt: ${abschnitt})<br>
-                <strong>Bezeichnung:</strong> ${props.STRBEZ || "-"}<br>
-                <strong>Aktueller Standort:</strong><br>
-                <span class="bkm-wert">KM ${aktuellerBKM}</span>
-            `;
-        }
+    // In HTML anzeigen
+    document.getElementById('ausgabe').innerHTML = `
+        <strong>Straße:</strong> ${strasse} (Abschnitt: ${abschnitt})<br>
+        <strong>Bezeichnung:</strong> ${props.STRBEZ || "-"}<br>
+        <strong>Aktueller Standort:</strong><br>
+        <span class="bkm-wert">KM ${aktuellerBKM.replace('.', ',')}</span>
+    `;
+}
     </script>
 </body>
 </html>
