@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BKM Tracker - NWSIB Integration</title>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #ausgabe { background: #f4f4f4; padding: 15px; border-radius: 8px; margin-top: 10px; line-height: 1.6; }
+        .bkm-wert { font-size: 1.5em; font-weight: bold; color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Mein Autobahn-Tool (Live BKM)</h1>
+    <div id="ausgabe">Warte auf GPS und Daten...</div>
+
+    <script>
+        let strassenDaten = null;
+
+        // 1. Deine konvertierte Datei laden (Abschnitt.json)
+        fetch('Abschnitt.json')
+            .then(response => response.json())
+            .then(data => {
+                strassenDaten = data;
+                console.log("NWSIB Daten erfolgreich geladen!");
+                starteGPS(); 
+            })
+            .catch(err => {
+                document.getElementById('ausgabe').innerHTML = "Fehler beim Laden der Abschnitt.json!";
+                console.error(err);
+            });
+
+        function starteGPS() {
+            if (navigator.geolocation) {
+                // watchPosition sorgt für kontinuierliche Updates während der Fahrt
+                navigator.geolocation.watchPosition(position => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    berechneBKM(lat, lon);
+                }, error => {
+                    console.error("GPS Fehler:", error);
+                }, {
+                    enableHighAccuracy: true // Wichtig für Autobahngeschwindigkeiten
+                });
+            }
+        }
+
+        function berechneBKM(lat, lon) {
+            if (!strassenDaten) return;
+
+            const aktuellerPunkt = turf.point([lon, lat]);
+            
+            // Sucht das nächste Liniensegment aus deiner JSON
+            const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
+            
+            // Zugriff auf deine spezifischen Spaltennamen
+            const props = snapped.properties;
+            
+            const strasse = (props.STRKL || "") + (props.STRNR || ""); // z.B. A1
+            const abschnitt = props.ABSNR || "Unbekannt";
+            
+            // WICHTIG: Prüfe in deiner JSON, ob der Start-Kilometer STAT_VON heißt.
+            // Falls er anders heißt (z.B. BKM_VON), hier anpassen:
+            const startBKM = parseFloat(props.STAT_VON) || 0; 
+            
+            // 'location' ist die Distanz vom Anfang des Linienstücks zum snapped Point (in km)
+            const distanzAufAbschnitt = props.location; 
+            
+            const aktuellerBKM = (startBKM + distanzAufAbschnitt).toFixed(3);
+
+            // In HTML anzeigen
+            document.getElementById('ausgabe').innerHTML = `
+                <strong>Straße:</strong> ${strasse} (Abschnitt: ${abschnitt})<br>
+                <strong>Bezeichnung:</strong> ${props.STRBEZ || "-"}<br>
+                <strong>Aktueller Standort:</strong><br>
+                <span class="bkm-wert">KM ${aktuellerBKM}</span>
+            `;
+        }
+    </script>
+</body>
+</html>
