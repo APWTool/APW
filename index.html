@@ -115,8 +115,15 @@ th { background: var(--table-head); }
 
 <div class="card">
     <div class="theme-switch" onclick="toggleTheme()">🌓</div>
-    <h2>Zuständigkeitsfinder</h2>
     
+<h2>Zuständigkeitsfinder</h2>
+    
+    <select id="prioMode">
+        <option value="bab">🛣️ Priorität: Autobahn</option>
+        <option value="land">🌲 Priorität: Landstraße</option>
+    </select>
+    
+    <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
     <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
         <option value="A1">A1</option>
         <option value="A3">A3</option>
@@ -252,11 +259,19 @@ function verarbeiteGPS(lat, lon, acc){
     let nLand=findeNaechsteLinie(datenLand, pt, null);
     
     let sel = null;
+    
+    // --- NEU: Den Umschalter auslesen ---
+    let prio = document.getElementById("prioMode") ? document.getElementById("prioMode").value : "bab";
 
-    if (nBAB && nBAB.dist <= 2.0) {
-        sel = nBAB;
-    } else if (nLand) {
-        sel = nLand;
+    // --- DIE DYNAMISCHE PRIORITÄT ---
+    if (prio === "bab") {
+        // Modus 1: Autobahn gewinnt (Wenn in 2km Nähe)
+        if (nBAB && nBAB.dist <= 2.0) sel = nBAB;
+        else if (nLand) sel = nLand;
+    } else {
+        // Modus 2: Landstraße gewinnt (Wenn in 2km Nähe)
+        if (nLand && nLand.dist <= 2.0) sel = nLand;
+        else if (nBAB) sel = nBAB;
     }
 
     if(sel){
@@ -265,7 +280,7 @@ function verarbeiteGPS(lat, lon, acc){
         const drop=document.getElementById("autobahn");
         
         if(Array.from(drop.options).some(o=>o.value===strName)){
-            // --- AUTOBAHN LOGIK (Unverändert) ---
+            // --- AUTOBAHN LOGIK ---
             let bkm=berechneGoldgriffBKM(pt, strName);
             document.getElementById("km").value=bkm.toFixed(3).replace('.',',');
             drop.value=strName;
@@ -273,29 +288,19 @@ function verarbeiteGPS(lat, lon, acc){
             zeigeListe(); updateRichtung(); berechnen();
             
         } else {
-            // --- NEU: LANDSTRASSEN LOGIK ---
-            
-            // 1. Abschnittsnummer auslesen (z.B. "1,2C")
+            // --- LANDSTRASSEN LOGIK ---
             let abschnitt = props.ABSNR || "Unbekannt";
-            
-            // 2. Zusatzinfos auslesen (z.B. "Ast" für Kreuzungen/Auffahrten)
             let ast = props.ABSAST && props.ABSAST !== "" ? ` (${props.ABSAST})` : "";
             
-            // 3. Exakte Distanz auf dieser Teilstrecke berechnen
-            // Turf berechnet den Punkt auf der Linie und gibt in 'location' die Kilometer vom Start der Linie zurück!
             let snapped = turf.nearestPointOnLine(sel.feature, pt);
             let distanzAufLinie = snapped.properties.location || 0;
-            
-            // 4. Echten Stationierungs-Kilometer berechnen (Start-KM + gefahrene Distanz)
             let startKM = parseFloat(props.STATANF) || 0;
             let aktuellerKM = startKM + distanzAufLinie;
             
-            // 5. Schick formatieren und anzeigen
             document.getElementById("gps-info").innerHTML=
                 `<span style="color:orange;font-weight:bold;">ℹ️ ${strName} erkannt</span><br>`+
                 `<small>Abschnitt: <b>${abschnitt}${ast}</b> | KM: <b>${aktuellerKM.toFixed(3)}</b></small>`;
             
-            // UI der Autobahn-Elemente ausblenden, da wir auf der Landstraße sind
             document.getElementById("km").value = "";
             document.getElementById("b").innerText="-";
             document.getElementById("g").innerText="-";
