@@ -6,38 +6,68 @@
 <title>Autobahn Tool - Profi Version (GeoJSON)</title>
 <script src="turf.min.js"></script>
 <style>
-/* Design-Fix: Einheitliche Proportionen und Box-Sizing */
-body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f8; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
-.card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); max-width: 450px; width: 100%; box-sizing: border-box; }
-h2 { text-align: center; color: #333; margin-top: 0; }
-
-/* WICHTIG: box-sizing: border-box sorgt dafür, dass 100% Breite exakt 100% bleiben */
-select, input, button { 
-    width: 100%; 
-    margin-top: 10px; 
-    padding: 12px; 
-    border-radius: 6px; 
-    border: 1px solid #ccc; 
-    box-sizing: border-box; 
-    font-size: 16px; 
-    font-family: inherit;
+:root {
+    --bg-body: #f4f6f8;
+    --bg-card: white;
+    --text-main: #333;
+    --text-secondary: #00529b;
+    --input-bg: white;
+    --input-border: #ccc;
+    --table-head: #eee;
+    --result-bg: #f0f4f8;
 }
-button { background: #007BFF; color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
-button:hover { background: #0056b3; }
+
+[data-theme="dark"] {
+    --bg-body: #121212;
+    --bg-card: #1e1e1e;
+    --text-main: #e0e0e0;
+    --text-secondary: #4dabff;
+    --input-bg: #2d2d2d;
+    --input-border: #444;
+    --table-head: #333;
+    --result-bg: #2a2d31;
+}
+
+body { font-family: Arial, sans-serif; margin: 20px; background: var(--bg-body); display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; color: var(--text-main); transition: 0.3s; }
+.card { background: var(--bg-card); padding: 20px; border-radius: 12px; box-shadow: 0 3px 10px rgba(0,0,0,0.2); max-width: 450px; width: 100%; box-sizing: border-box; position: relative; }
+h2 { text-align: center; color: var(--text-secondary); margin-top: 0; }
+
+/* Dark Mode Toggle Position */
+.theme-switch { position: absolute; top: 15px; right: 15px; cursor: pointer; font-size: 20px; }
+
+select, input, button { 
+    width: 100%; margin-top: 10px; padding: 12px; border-radius: 6px; 
+    border: 1px solid var(--input-border); box-sizing: border-box; 
+    font-size: 16px; background: var(--input-bg); color: var(--text-main); 
+}
+button { background: #007BFF; color: white; border: none; cursor: pointer; font-weight: bold; }
 button.active { background: #dc3545; }
 
 table { width: 100%; margin-top: 20px; border-collapse: collapse; font-size: 0.9em; }
-th, td { border: 1px solid #ccc; padding: 10px 8px; text-align: left; }
-th { background: #eee; }
-.bar { margin-top: 15px; height: 20px; background: #ddd; border-radius: 10px; overflow: hidden; }
+th, td { border: 1px solid var(--input-border); padding: 10px 8px; text-align: left; }
+th { background: var(--table-head); }
+
+.bar { margin-top: 15px; height: 20px; background: #444; border-radius: 10px; overflow: hidden; }
 .fill { height: 100%; background: #007BFF; width: 0%; transition: width 0.3s; }
-.result { margin-top: 15px; padding: 15px; background: #f0f4f8; border-radius: 8px; border-left: 4px solid #007BFF; }
-.result p { margin: 8px 0; }
-#gps-info { font-size: 0.9em; background: #fff; padding: 12px; border: 1px solid #ccc; border-radius: 6px; margin-top: 10px; line-height: 1.4; text-align: center; }
+.result { margin-top: 15px; padding: 15px; background: var(--result-bg); border-radius: 8px; border-left: 4px solid #007BFF; }
+#gps-info { font-size: 0.85em; background: var(--bg-card); padding: 8px; border: 1px solid var(--input-border); border-radius: 6px; margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
+    
+<div class="card">
+    <div class="theme-switch" onclick="toggleTheme()">🌓</div>
+    
+    <h2>Zuständigkeitsfinder</h2>
+    
+    <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
+        </select>
 
+    <input id="km" placeholder="Kilometer eingeben" inputmode="decimal" oninput="berechnen()">
+
+    <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
+    <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
+    </div>
 <div class="card">
 <h2>Zuständigkeitsfinder</h2>
 
@@ -88,6 +118,15 @@ th { background: #eee; }
 </div>
 
 <script>
+    
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute("data-theme");
+    if (currentTheme === "dark") {
+        document.documentElement.setAttribute("data-theme", "light");
+    } else {
+        document.documentElement.setAttribute("data-theme", "dark");
+    }
+}
 // --- 1. DATEN (Dein Originalstand) ---
 const grenzen={A1:[363.315,381.646],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 
