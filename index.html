@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autobahn Tool - Profi Version (GeoJSON)</title>
-<script src="turf.min.js"></script>
+<title>Autobahn Tool - Profi Version (Dark Mode)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/turf/6.5.0/turf.min.js"></script>
 <style>
+/* --- OPTIK & DARK MODE VARIABLEN --- */
 :root {
     --bg-body: #f4f6f8;
     --bg-card: white;
@@ -15,6 +16,7 @@
     --input-border: #ccc;
     --table-head: #eee;
     --result-bg: #f0f4f8;
+    --accent: #007BFF;
 }
 
 [data-theme="dark"] {
@@ -28,108 +30,142 @@
     --result-bg: #2a2d31;
 }
 
-body { font-family: Arial, sans-serif; margin: 20px; background: var(--bg-body); display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; color: var(--text-main); transition: 0.3s; }
-.card { background: var(--bg-card); padding: 20px; border-radius: 12px; box-shadow: 0 3px 10px rgba(0,0,0,0.2); max-width: 450px; width: 100%; box-sizing: border-box; position: relative; }
-h2 { text-align: center; color: var(--text-secondary); margin-top: 0; }
-
-/* Dark Mode Toggle Position */
-.theme-switch { position: absolute; top: 15px; right: 15px; cursor: pointer; font-size: 20px; }
-
-select, input, button { 
-    width: 100%; margin-top: 10px; padding: 12px; border-radius: 6px; 
-    border: 1px solid var(--input-border); box-sizing: border-box; 
-    font-size: 16px; background: var(--input-bg); color: var(--text-main); 
+body { 
+    font-family: Arial, sans-serif; 
+    margin: 20px; 
+    background: var(--bg-body); 
+    display: flex; 
+    gap: 20px; 
+    flex-wrap: wrap; 
+    justify-content: center; 
+    color: var(--text-main); 
+    transition: background 0.3s, color 0.3s; 
 }
-button { background: #007BFF; color: white; border: none; cursor: pointer; font-weight: bold; }
+
+.card { 
+    background: var(--bg-card); 
+    padding: 20px; 
+    border-radius: 12px; 
+    box-shadow: 0 3px 15px rgba(0,0,0,0.2); 
+    max-width: 450px; 
+    width: 100%; 
+    box-sizing: border-box; 
+    position: relative; 
+}
+
+h2 { text-align: center; color: var(--text-secondary); margin-top: 0; margin-bottom: 20px; }
+
+/* Dark Mode Toggle */
+.theme-switch { 
+    position: absolute; 
+    top: 15px; 
+    right: 15px; 
+    cursor: pointer; 
+    font-size: 22px; 
+    user-select: none;
+}
+
+/* Design-Fix: Alle Felder exakt gleich breit */
+select, input, button { 
+    width: 100%; 
+    margin-top: 12px; 
+    padding: 12px; 
+    border-radius: 8px; 
+    border: 1px solid var(--input-border); 
+    box-sizing: border-box; 
+    font-size: 16px; 
+    background: var(--input-bg); 
+    color: var(--text-main); 
+    font-family: inherit;
+}
+
+button { background: var(--accent); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
+button:hover { filter: brightness(1.1); }
 button.active { background: #dc3545; }
 
 table { width: 100%; margin-top: 20px; border-collapse: collapse; font-size: 0.9em; }
 th, td { border: 1px solid var(--input-border); padding: 10px 8px; text-align: left; }
 th { background: var(--table-head); }
 
-.bar { margin-top: 15px; height: 20px; background: #444; border-radius: 10px; overflow: hidden; }
-.fill { height: 100%; background: #007BFF; width: 0%; transition: width 0.3s; }
-.result { margin-top: 15px; padding: 15px; background: var(--result-bg); border-radius: 8px; border-left: 4px solid #007BFF; }
-#gps-info { font-size: 0.85em; background: var(--bg-card); padding: 8px; border: 1px solid var(--input-border); border-radius: 6px; margin-top: 10px; text-align: center; }
+.bar { margin-top: 15px; height: 18px; background: #444; border-radius: 9px; overflow: hidden; }
+.fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+
+.result { 
+    margin-top: 15px; 
+    padding: 15px; 
+    background: var(--result-bg); 
+    border-radius: 8px; 
+    border-left: 4px solid var(--accent); 
+}
+.result p { margin: 6px 0; }
+
+#gps-info { 
+    font-size: 0.85em; 
+    background: var(--bg-card); 
+    padding: 10px; 
+    border: 1px solid var(--input-border); 
+    border-radius: 8px; 
+    margin-top: 12px; 
+    text-align: center; 
+    line-height: 1.4;
+}
 </style>
 </head>
 <body>
-    
+
 <div class="card">
     <div class="theme-switch" onclick="toggleTheme()">🌓</div>
-    
     <h2>Zuständigkeitsfinder</h2>
     
     <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
-        </select>
+        <option value="A1">A1</option>
+        <option value="A3">A3</option>
+        <option value="A44">A44</option>
+        <option value="A46">A46</option>
+        <option value="A57">A57</option>
+        <option value="A59">A59</option>
+        <option value="A535">A535</option>
+        <option value="A542">A542</option>
+    </select>
 
     <input id="km" placeholder="Kilometer eingeben" inputmode="decimal" oninput="berechnen()">
 
     <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
     <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
+
+    <button onclick="berechnen()">Manuell Berechnen</button>
+
+    <div class="result">
+        <p><strong>Bereich:</strong> <span id="b"></span></p>
+        <p><strong>Gemeinde:</strong> <span id="g"></span></p>
+        <p><strong>Meisterei:</strong> <span id="m"></span></p>
+        <p><strong>Adresse:</strong> <span id="m_address"></span></p>
+        <div class="bar"><div id="progress" class="fill"></div></div>
     </div>
-<div class="card">
-<h2>Zuständigkeitsfinder</h2>
 
-<select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
-    <option value="A1">A1</option>
-    <option value="A3">A3</option>
-    <option value="A44">A44</option>
-    <option value="A46">A46</option>
-    <option value="A57">A57</option>
-    <option value="A59">A59</option>
-    <option value="A535">A535</option>
-    <option value="A542">A542</option>
-</select>
-
-<input id="km" placeholder="Kilometer (z.B. 378,500)" oninput="berechnen()">
-
-<button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
-<div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
-
-<button onclick="berechnen()">Manuell Berechnen</button>
-
-<div class="result">
-    <p><strong>Bereich:</strong> <span id="b"></span></p>
-    <p><strong>Gemeinde:</strong> <span id="g"></span></p>
-    <p><strong>Meisterei:</strong> <span id="m"></span></p>
-    <p><strong>Adresse:</strong> <span id="m_address"></span></p>
-    <div class="bar"><div id="progress" class="fill"></div></div>
-</div>
-
-<table>
-    <thead><tr><th>Typ</th><th>Name</th><th>Km</th></tr></thead>
-    <tbody id="liste"></tbody>
-</table>
+    <table>
+        <thead><tr><th>Typ</th><th>Name</th><th>Km</th></tr></thead>
+        <tbody id="liste"></tbody>
+    </table>
 </div>
 
 <div class="card">
-<h2>Weg-Zeit Rechner</h2>
-<input id="start_km" placeholder="Start km">
-<input id="speed" placeholder="km/h">
-<select id="richtung"></select>
-<input id="zeit" placeholder="Zeit (h)">
-<button onclick="berechneWeg()">Berechnen</button>
+    <h2>Weg-Zeit Rechner</h2>
+    <input id="start_km" placeholder="Start km" inputmode="decimal">
+    <input id="speed" placeholder="Geschwindigkeit (km/h)" inputmode="numeric">
+    <select id="richtung"></select>
+    <input id="zeit" placeholder="Zeit (h)" inputmode="decimal">
+    <button onclick="berechneWeg()">Berechnen</button>
 
-<div class="result">
-    <p><strong>Ziel km:</strong> <span id="ziel_km"></span></p>
-    <p><strong>Nächste AS:</strong> <span id="next_as"></span></p>
-</div>
+    <div class="result">
+        <p><strong>Ziel km:</strong> <span id="ziel_km"></span></p>
+        <p><strong>Nächste AS:</strong> <span id="next_as"></span></p>
+    </div>
 </div>
 
 <script>
-    
-function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute("data-theme");
-    if (currentTheme === "dark") {
-        document.documentElement.setAttribute("data-theme", "light");
-    } else {
-        document.documentElement.setAttribute("data-theme", "dark");
-    }
-}
-// --- 1. DATEN (Dein Originalstand) ---
+// --- DEINE DATEN (Original belassen) ---
 const grenzen={A1:[363.315,381.646],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
-
 const listen={
 A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
 A3:[["PP","Stindertal","103,400"],["PP","Stinderhof","103,400"],["AK","Hilden","108,700"],["Sonst","Heidi","113,100"],["AS","Solingen","117,400"],["AK","Langenfeld","118,400"],["PP","Reusrather Heide","121,600"]],
@@ -140,122 +176,111 @@ A59:[["AK","Düsseldorf Süd","0,578"],["AS","D.-Benrath","1,800"],["AS","D.-Gar
 A535:[["AD","Velbert-Nord","0,262"],["AS","Velbert","1,800"],["AS","Tönnisheide","4,500"],["AS","Wülfrath","6,600"],["Tunnel","Großer Busch","11,030-11,300"],["AS","W.-Dornap","11,700"]],
 A542:[["AD","Monheim-Süd","4,055"],["AS","Reusrath","5,700"],["AS","Immigrath","8,000"],["AD","Langenfeld","8,754"]]
 };
+const gemeinden={A1:[{from:363.315,to:365.711,name:"Schwelm"},{from:365.711,to:373.815,name:"Wuppertal"},{from:373.815,to:381.646,name:"Remscheid"}],A3:[{from:101.2,to:102.996,name:"Düsseldorf"},{from:102.996,to:108.347,name:"Erkrath"},{from:108.347,to:112.770,name:"Hilden"},{from:112.770,to:114.266,name:"Solingen"},{from:114.264,to:122.819,name:"Langenfeld"}],A44:[{from:1.215,to:4.096,name:"Heiligenhaus"},{from:4.096,to:4.907,name:"Wülfrath"},{from:4.907,to:5.466,name:"Velbert"},{from:5.466,to:5.607,name:"Heiligenhaus"},{from:5.607,to:12.754,name:"Velbert"},{from:12.754,to:17.599,name:"Essen"}],A46:[{from:70.815,to:74.919,name:"Neuss"},{from:74.919,to:85.416,name:"Düsseldorf"},{from:85.416,to:94.706,name:"Haan"},{from:94.706,to:114.763,name:"Wuppertal"}],A57:[{from:88.5,to:91.6,name:"Neuss"},{from:91.6,to:100.912,name:"Dormagen"}],A59:[{from:0.578,to:7.714,name:"Düsseldorf"},{from:7.714,to:14.467,name:"Langenfeld"}],A535:[{from:0.262,to:7.128,name:"Velbert"},{from:7.128,to:9.326,name:"Wülfrath"},{from:9.326,to:12.811,name:"Wuppertal"}],A542:[{from:4.055,to:8.754,name:"Langenfeld"}]};
+const richtungen={A1:["RF Köln (+)","RF Dortmund (-)"],A3:["RF Köln (+)","RF Arnheim (-)"],A44:["RF Kassel (+)","RF Aachen (-)"],A46:["RF Brilon (+)","RF Heinsberg (-)"],A57:["RF Köln (+)","RF Nijmegen (-)"],A59:["RF Köln (+)","RF Dinslaken (-)"],A535:["RF Wuppertal (+)","RF Velbert (-)"],A542:["RF Langenfeld (+)","RF Monheim (-)"]};
+const meistereien={A1:[{from:363.315,to:365.649,name:"AM Hagen",address:"In d. Krone 20, 58099 Hagen"},{from:365.649,to:381.646,name:"AM Remscheid",address:"Talsperre 23, 42859 Remscheid"}],A3:[{from:101.2,to:107.925,name:"AM Ratingen",address:"Brachter Str. 45A, 40882 Ratingen"},{from:107.925,to:122.819,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}],A44:[{from:1.215,to:17.599,name:"AM Ratingen",address:"Brachter Str. 45A, 40882 Ratingen"}],A46:[{from:70.815,to:80.770,name:"AM Kaarst",address:"Neersener Str. 9, 41564 Kaarst"},{from:80.770,to:88.340,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"},{from:88.340,to:114.763,name:"AM Remscheid",address:"Talsperre 23, 42859 Remscheid"}],A57:[{from:88.5,to:93.343,name:"AM Kaarst",address:"Neersener Str. 9, 41564 Kaarst"},{from:93.343,to:100.912,name:"AM Köln",address:"Dürener Str. 462, 50858 Köln"}],A59:[{from:0.578,to:14.467,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}],A535:[{from:0.262,to:12.811,name:"AM Remscheid",address:"Talsperre 23, 42859 Remscheid"}],A542:[{from:4.055,to:8.754,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}]};
 
-// --- Deine Gemeinden, Richtungen und Meistereien (Hier unverändert lassen) ---
-const gemeinden={ A1:[{from:363.315,to:365.711,name:"Schwelm"},{from:365.711,to:373.815,name:"Wuppertal"},{from:373.815,to:381.646,name:"Remscheid"}], A3:[{from:101.2,to:102.996,name:"Düsseldorf"},{from:102.996,to:108.347,name:"Erkrath"},{from:108.347,to:112.770,name:"Hilden"},{from:112.770,to:114.266,name:"Solingen"},{from:114.264,to:122.819,name:"Langenfeld"}], A44:[{from:1.215,to:4.096,name:"Heiligenhaus"},{from:4.096,to:4.907,name:"Wülfrath"},{from:4.907,to:5.466,name:"Velbert"},{from:5.466,to:5.607,name:"Heiligenhaus"},{from:5.607,to:12.754,name:"Velbert"},{from:12.754,to:17.599,name:"Essen"}], A46:[{from:70.815,to:74.919,name:"Neuss"},{from:74.919,to:85.416,name:"Düsseldorf"},{from:85.416,to:94.706,name:"Haan"},{from:94.706,to:114.763,name:"Wuppertal"}], A57:[{from:88.5,to:91.6,name:"Neuss"},{from:91.6,to:100.912,name:"Dormagen"}], A59:[{from:0.578,to:7.714,name:"Düsseldorf"},{from:7.714,to:14.467,name:"Langenfeld"}], A535:[{from:0.262,to:7.128,name:"Velbert"},{from:7.128,to:9.326,name:"Wülfrath"},{from:9.326,to:12.811,name:"Wuppertal"}], A542:[{from:4.055,to:8.754,name:"Langenfeld"}] };
-const richtungen={ A1:["RF Köln (+)","RF Dortmund (-)"], A3:["RF Köln (+)","RF Arnheim (-)"], A44:["RF Kassel (+)","RF Aachen (-)"], A46:["RF Brilon (+)","RF Heinsberg (-)"], A57:["RF Köln (+)","RF Nijmegen (-)"], A59:["RF Köln (+)","RF Dinslaken (-)"], A535:["RF Wuppertal (+)","RF Velbert (-)"], A542:["RF Langenfeld (+)","RF Monheim (-)"] };
-const meistereien={ A1:[{from:363.315,to:365.649,name:"AM Hagen",address:"In d. Krone 20, 58099 Hagen"},{from:365.649,to:381.646,name:"AM Remscheid",address:"Talsperre 23, 42859 Remscheid"}], A3:[{from:101.2,to:107.925,name:"AM Ratingen",address:"Brachter Str. 45A, 40882 Ratingen"},{from:107.925,to:122.819,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}], A44:[{from:1.215,to:17.599,name:"AM Ratingen",address:"Brachter Str. 45A, 40882 Ratingen"}], A46:[{from:70.815,to:80.770,name:"AM Kaarst",address:"Neersener Str. 9, 41564 Kaarst"},{from:80.770,to:88.340,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"},{from:88.340,to:114.763,name:"AM Remscheid",address:"Talsperre 23, 42859 Remscheid"}], A57:[{from:88.5,to:93.343,name:"AM Kaarst",address:"Neersener Str. 9, 41564 Kaarst"},{from:93.343,to:100.912,name:"AM Köln",address:"Dürener Str. 462, 50858 Köln"}], A59:[{from:0.578,to:14.467,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}], A535:[{from:0.262,to:12.811,name:"AM Remscheid",address:"Talsperre 23, 42859 Remscheid"}], A542:[{from:4.055,to:8.754,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}] };
+// --- OPTIK-FUNKTION (Dark Mode) ---
+function toggleTheme() {
+    const doc = document.documentElement;
+    if (doc.getAttribute("data-theme") === "dark") {
+        doc.setAttribute("data-theme", "light");
+    } else {
+        doc.setAttribute("data-theme", "dark");
+    }
+}
 
-// --- 2. GPS & DATEI LOGIK ---
-let datenLand = [], datenBAB = [], referenzPunkte = [];
-let datenGeladen = false;
-let watchId = null;
+// --- GPS & DATEI LOGIK ---
+let datenLand=[], datenBAB=[], referenzPunkte=[];
+let datenGeladen=false, watchId=null;
 
 Promise.all([
-    fetch('Abschnitt.json').then(res => res.json()),
-    fetch('AbschnittBAB.json').then(res => res.json()),
-    fetch('BABKM.json').then(res => res.json()) // Angepasst auf .json
-]).then(([land, bab, punkte]) => {
-    datenLand = extrahiere(land, true);
-    datenBAB = extrahiere(bab, true);
-    referenzPunkte = extrahiere(punkte, false);
-    datenGeladen = true;
-    document.getElementById("gps-info").innerHTML = '<span style="color:green; font-weight:bold;">✅ Geo-Datenbank geladen. GPS bereit.</span>';
-}).catch(err => {
-    document.getElementById("gps-info").innerHTML = '<span style="color:red; font-weight:bold;">❌ Fehler beim Laden der Dateien (Abschnitt.json, AbschnittBAB.json oder BABKM.json)</span>';
+    fetch('Abschnitt.json').then(res=>res.json()),
+    fetch('AbschnittBAB.json').then(res=>res.json()),
+    fetch('BABKM.json').then(res=>res.json())
+]).then(([land, bab, punkte])=>{
+    datenLand=extrahiere(land, true);
+    datenBAB=extrahiere(bab, true);
+    referenzPunkte=extrahiere(punkte, false);
+    datenGeladen=true;
+    document.getElementById("gps-info").innerHTML='<span style="color:green; font-weight:bold;">✅ Datenbank bereit</span>';
+}).catch(err=>{
+    document.getElementById("gps-info").innerHTML='<span style="color:red;">❌ Fehler beim Laden der Dateien</span>';
 });
 
-function extrahiere(json, erwarteLinien) {
-    let list = [];
-    if (!json || !json.features) return list;
-    json.features.forEach(f => {
-        try { 
-            turf.flatten(f).features.forEach(sub => {
-                if (erwarteLinien && (!sub.geometry || !sub.geometry.type.includes('LineString'))) return;
-                list.push(sub);
-            }); 
-        } catch(e){}
+function extrahiere(json, erwarteLinien){
+    let list=[]; if(!json||!json.features) return list;
+    json.features.forEach(f=>{
+        try { turf.flatten(f).features.forEach(sub=>{
+            if(erwarteLinien&&(!sub.geometry||!sub.geometry.type.includes('LineString'))) return;
+            list.push(sub);
+        }); } catch(e){}
     });
     return list;
 }
 
-function toggleGPS() {
-    const btn = document.getElementById("gpsBtn");
-    const info = document.getElementById("gps-info");
-    if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-        btn.innerHTML = "📡 GPS Live-Erfassung starten";
-        btn.classList.remove("active");
-        info.innerHTML = "GPS pausiert.";
+function toggleGPS(){
+    const btn=document.getElementById("gpsBtn"), info=document.getElementById("gps-info");
+    if(watchId){
+        navigator.geolocation.clearWatch(watchId); watchId=null;
+        btn.innerHTML="📡 GPS Live-Erfassung starten"; btn.classList.remove("active");
+        info.innerHTML="GPS pausiert.";
     } else {
-        if (!navigator.geolocation) return info.innerText = "Browser unterstützt kein GPS";
-        btn.innerHTML = "⏹️ GPS stoppen";
-        btn.classList.add("active");
-        info.innerHTML = "⏳ Suche Satelliten...";
-        watchId = navigator.geolocation.watchPosition(pos => {
-            try { verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy); }
-            catch (e) { info.innerHTML = "❌ Fehler: " + e.message; }
-        }, err => { info.innerHTML = "❌ GPS-Fehler: " + err.message; }, { enableHighAccuracy: true, maximumAge: 0 });
+        if(!navigator.geolocation) return info.innerText="GPS nicht unterstützt";
+        btn.innerHTML="⏹️ GPS stoppen"; btn.classList.add("active"); info.innerHTML="⏳ Suche Signal...";
+        watchId=navigator.geolocation.watchPosition(pos=>{
+            try{verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);}
+            catch(e){info.innerHTML="❌ Fehler: "+e.message;}
+        }, err=>{info.innerHTML="❌ GPS-Fehler: "+err.message;}, {enableHighAccuracy:true, maximumAge:0});
     }
 }
 
-function verarbeiteGPS(lat, lon, acc) {
-    const pt = turf.point([lon, lat]);
-    let nBAB = findeNaechsteLinie(datenBAB, pt);
-    let nLand = findeNaechsteLinie(datenLand, pt);
-    let sel = (nBAB && nBAB.dist <= 0.15) ? nBAB : nLand;
-
-    if (sel) {
-        const props = sel.feature.properties || {};
-        const strName = ((props.STRKL || "") + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
-        let bkm = berechneGoldgriffBKM(pt, strName);
-        
-        document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
-        const dropdown = document.getElementById("autobahn");
-        if (Array.from(dropdown.options).some(o => o.value === strName)) {
-            dropdown.value = strName;
-            document.getElementById("gps-info").innerHTML = `<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | BKM: ${bkm.toFixed(3)} | Gen.: ±${acc.toFixed(0)}m`;
+function verarbeiteGPS(lat, lon, acc){
+    const pt=turf.point([lon, lat]);
+    let nBAB=findeNaechsteLinie(datenBAB, pt);
+    let nLand=findeNaechsteLinie(datenLand, pt);
+    let sel=(nBAB&&nBAB.dist<=0.15)?nBAB:nLand;
+    if(sel){
+        const props=sel.feature.properties||{};
+        const strName=((props.STRKL||"")+(props.STRNR||"")).toUpperCase().replace(/\s/g,'');
+        let bkm=berechneGoldgriffBKM(pt, strName);
+        document.getElementById("km").value=bkm.toFixed(3).replace('.',',');
+        const drop=document.getElementById("autobahn");
+        if(Array.from(drop.options).some(o=>o.value===strName)){
+            drop.value=strName;
+            document.getElementById("gps-info").innerHTML=`<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | ±${acc.toFixed(0)}m`;
         }
         zeigeListe(); updateRichtung(); berechnen();
     }
 }
 
-function berechneGoldgriffBKM(meinPunkt, strName) {
-    let suchName = strName.replace(/\s/g,'').replace('A',''); 
-    let passendePunkte = referenzPunkte.filter(f => {
-        if (!f.properties || !f.properties.Bez) return false;
-        return String(f.properties.Bez).toUpperCase().replace(/\s/g,'').replace('A','') === suchName;
+function berechneGoldgriffBKM(meinPunkt, strName){
+    let suchName=strName.replace(/\s/g,'').replace('A','');
+    let passende=referenzPunkte.filter(f=>{
+        if(!f.properties||!f.properties.Bez) return false;
+        return String(f.properties.Bez).toUpperCase().replace(/\s/g,'').replace('A','')===suchName;
     });
-
-    if (passendePunkte.length > 0) {
-        let ptsColl = turf.featureCollection(passendePunkte);
-        let closest = turf.nearestPoint(meinPunkt, ptsColl);
-        let refKM = parseFloat(String(closest.properties.Kilometer).replace(',', '.'));
-        let dist = turf.distance(meinPunkt, closest); 
-        
-        // Da wir nun saubere WGS84 Daten haben, stimmt diese Berechnung auf den Meter genau!
+    if(passende.length>0){
+        let ptsColl=turf.featureCollection(passende);
+        let closest=turf.nearestPoint(meinPunkt, ptsColl);
+        let refKM=parseFloat(String(closest.properties.Kilometer).replace(',','.'));
+        let dist=turf.distance(meinPunkt, closest);
         return refKM + dist;
     }
-    return 0; 
+    return 0;
 }
 
-function findeNaechsteLinie(liste, pt) {
-    let min = Infinity; let found = null;
-    liste.forEach(f => {
-        try {
-            let d = turf.pointToLineDistance(pt, f);
-            if (d < min) { min = d; found = f; }
-        } catch(e) {}
+function findeNaechsteLinie(liste, pt){
+    let min=Infinity, found=null;
+    liste.forEach(f=>{
+        try{ let d=turf.pointToLineDistance(pt, f); if(d<min){min=d; found=f;} } catch(e){}
     });
-    return found ? { feature: found, dist: min } : null;
+    return found ? {feature:found, dist:min} : null;
 }
 
-// --- 3. UI FUNKTIONEN (Originale von dir) ---
 function zeigeListe(){
     let a=document.getElementById("autobahn").value;
-    let tbody=document.getElementById("liste");
-    tbody.innerHTML="";
+    let tbody=document.getElementById("liste"); tbody.innerHTML="";
     if(!grenzen[a]) return;
     document.getElementById("b").innerText=grenzen[a][0].toFixed(3).replace('.',',')+" - "+grenzen[a][1].toFixed(3).replace('.',',');
     if(listen[a]) listen[a].forEach(e=>{
@@ -265,24 +290,25 @@ function zeigeListe(){
     });
     updateZuständigkeit();
 }
-function updateZuständigkeit() {
-    let a=document.getElementById("autobahn").value;
-    let km=parseFloat(document.getElementById("km").value.replace(',','.'));
+
+function updateZuständigkeit(){
+    let a=document.getElementById("autobahn").value, km=parseFloat(document.getElementById("km").value.replace(',','.'));
     let gemeinde="-", meister="-", addr="-";
-    if(!isNaN(km) && gemeinden[a] && meistereien[a]){
-        gemeinden[a].forEach(gf=>{if(km>=gf.from && km<=gf.to) gemeinde=gf.name;});
-        meistereien[a].forEach(mf=>{if(km>=mf.from && km<=mf.to){meister=mf.name; addr=mf.address;}});
+    if(!isNaN(km)&&gemeinden[a]&&meistereien[a]){
+        gemeinden[a].forEach(gf=>{if(km>=gf.from&&km<=gf.to) gemeinde=gf.name;});
+        meistereien[a].forEach(mf=>{if(km>=mf.from&&km<=mf.to){meister=mf.name; addr=mf.address;}});
     }
     document.getElementById("g").innerText=gemeinde;
     document.getElementById("m").innerText=meister;
     document.getElementById("m_address").innerText=addr;
 }
+
 function updateRichtung(){
-    let a=document.getElementById("autobahn").value;
-    let sel=document.getElementById("richtung"); sel.innerHTML="";
+    let a=document.getElementById("autobahn").value, sel=document.getElementById("richtung"); sel.innerHTML="";
     if(!richtungen[a]) return;
     richtungen[a].forEach(r=>{ let opt=document.createElement("option"); opt.value=r; opt.textContent=r; sel.appendChild(opt); });
 }
+
 function berechnen(){
     updateZuständigkeit();
     let km=parseFloat(document.getElementById("km").value.replace(',','.'));
@@ -292,24 +318,24 @@ function berechnen(){
     let percent=((km-grenzen[a][0])/(grenzen[a][1]-grenzen[a][0]))*100;
     document.getElementById("progress").style.width=Math.max(0,Math.min(100,percent))+"%";
 }
+
 function berechneWeg(){
     let km=parseFloat(document.getElementById("start_km").value.replace(',','.'));
-    let speed=parseFloat(document.getElementById("speed").value);
-    let time=parseFloat(document.getElementById("zeit").value);
-    let dir=document.getElementById("richtung").value;
-    let a=document.getElementById("autobahn").value;
+    let speed=parseFloat(document.getElementById("speed").value), time=parseFloat(document.getElementById("zeit").value);
+    let dir=document.getElementById("richtung").value, a=document.getElementById("autobahn").value;
     if(isNaN(km)||isNaN(speed)||isNaN(time)||!listen[a])return;
     let ziel=dir.includes("(+)")?km+(speed*time):km-(speed*time);
     let next="-", bestDiff=Infinity;
     listen[a].forEach(e=>{
         if(e[0]!="AS") return;
         let val=parseFloat(e[2].replace(',','.'));
-        if(dir.includes("(+)") && val>=ziel){ if(val-ziel<bestDiff){bestDiff=val-ziel; next=e[1];}}
-        if(dir.includes("(-)") && val<=ziel){ if(ziel-val<bestDiff){bestDiff=ziel-val; next=e[1];}}
+        if(dir.includes("(+)")&&val>=ziel){if(val-ziel<bestDiff){bestDiff=val-ziel; next=e[1];}}
+        if(dir.includes("(-)")&&val<=ziel){if(ziel-val<bestDiff){bestDiff=ziel-val; next=e[1];}}
     });
     document.getElementById("ziel_km").innerText=ziel.toFixed(3).replace('.',',');
     document.getElementById("next_as").innerText=next;
 }
+
 zeigeListe(); updateRichtung();
 </script>
 </body>
