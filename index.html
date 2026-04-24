@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autobahn Tool - Profi Version (Dark Mode)</title>
+<title>Autobahn Tool </title>
 <script src="turf.min.js"></script>
 <style>
 /* --- OPTIK & DARK MODE VARIABLEN --- */
@@ -119,11 +119,11 @@ th { background: var(--table-head); }
 <h2>Zuständigkeitsfinder</h2>
     
     <select id="prioMode">
-        <option value="bab">🛣️ Priorität: Autobahn</option>
-        <option value="land">🌲 Priorität: Landstraße</option>
+        <option value="bab">Priorität: Autobahn</option>
+        <option value="land">Priorität: Landstraße</option>
     </select>
     
-    <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
+
     <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
         <option value="A1">A1</option>
         <option value="A3">A3</option>
@@ -137,7 +137,7 @@ th { background: var(--table-head); }
 
     <input id="km" placeholder="Kilometer eingeben" inputmode="decimal" oninput="berechnen()">
 
-    <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
+    <button id="gpsBtn" onclick="toggleGPS()">GPS Live-Erfassung starten</button>
     <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
 
     <button onclick="berechnen()">Manuell Berechnen</button>
