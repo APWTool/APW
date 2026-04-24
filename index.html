@@ -75,9 +75,9 @@ const grenzen={A1:[363.315,381.646],A3:[101.2,122.819],A44:[1.215,17.599],A46:[7
 
 const listen={
 A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
-A3:[["PP","Stindertal","103,400"],["PP","Stinderhof","103,400"],["AK","Hilden","108,700"],["Sonst","Heidi","113,100"],["AS","Solingen","117,400"],["AK","Langenfeld","118,400"],["PP","Reusrather Heide","121,600"]],
+A3:[["PP","Stindertal","103,400"],["PP","Stinderhof","103,400"],["AK","Hilden","108,700"],["TuR","Heidi","113,100"],["AS","Solingen","117,400"],["AK","Langenfeld","118,400"],["PP","Reusrather Heide","121,600"]],
 A44:[["AS","Heiligenhaus","1,200"],["AS","Hetterscheidt","6,000"],["Tunnel","Birth","7,090-7,930"],["AS","Velbert-Nord","8,400"],["AD","Velbert-Nord","9,500"],["AS","Langenberg","11,900"],["AS","E.-Kupferd.-Dilldorf","14,100"],["SA","E.-Kupferdreh","14,700"],["AS","E.-Überruhr","16,800"],["AS","E.-Heisingen","17,600"]],
-A46:[["AK","Neuss-Süd","70,800"],["AS","NE-Uedesheim","72,300"],["AS","D.-Bilk","76,300"],["Tunnel","Universität","76,136-77,170"],["AS","D.-Wersten","78,200"],["Tunnel","Wersten","78,140-79,010"],["AS","D.-Holthausen","80,000"],["AS","D.-Eller","81,200"],["AK","Düsseldorf-Süd","82,000"],["AS","Erkrath","85,000"],["AK","Hilden","87,000"],["AS","Hilden","87,400"],["AS","Haan-West","89,400"],["PP","Höfgen","92,600"],["PP","Stropmütze","92,600"],["AS","Haan-Ost","94,200"],["AS","W.-Cronenberg","98,400"],["Kreuz","Sonnborner","99,500"],["AS","W.-Varresbeck","101,600"],["AS","W.-Katernberg","103,900"],["AS","W.-Elberfeld","105,700"],["AS","W.-Barmen","107,800"],["AS","W.-Wichlinghausen","110,000"],["Kreuz","Sternenberg","110,900"],["AS","W.-Oberbarmen","113,900"]],
+A46:[["AK","Neuss-Süd","70,800"],["AS","NE-Uedesheim","72,300"],["AS","D.-Bilk","76,300"],["Tunnel","Universität","76,136-77,170"],["AS","D.-Wersten","78,200"],["Tunnel","Wersten","78,140-79,010"],["AS","D.-Holthausen","80,000"],["AS","D.-Eller","81,200"],["AK","Düsseldorf-Süd","82,000"],["AS","Erkrath","85,000"],["AK","Hilden","87,000"],["AS","Hilden","87,400"],["AS","Haan-West","89,400"],["PP","Höfgen","92,600"],["PP","Stropmütze","92,600"],["AS","Haan-Ost","94,200"],["AS","W.-Cronenberg","98,400"],["Kreuz","Sonnborn","99,500"],["AS","W.-Varresbeck","101,600"],["AS","W.-Katernberg","103,900"],["AS","W.-Elberfeld","105,700"],["AS","W.-Barmen","107,800"],["AS","W.-Wichlinghausen","110,000"],["PP","Sternenberg","110,900"],["AS","W.-Oberbarmen","113,900"]],
 A57:[["AK","Neuss-Süd","90,300"],["TuR","Nievenheim","94,900"],["AS","Dormagen","99,400"]],
 A59:[["AK","Düsseldorf Süd","0,578"],["AS","D.-Benrath","1,800"],["AS","D.-Garath","4,600"],["PP","Wolfhagen","8,000"],["AS","Richrath","9,000"],["PP","Berghausen","9,900"],["AS","Monheim","11,400"],["AK","Monheim-Süd","13,100"]],
 A535:[["AD","Velbert-Nord","0,262"],["AS","Velbert","1,800"],["AS","Tönnisheide","4,500"],["AS","Wülfrath","6,600"],["Tunnel","Großer Busch","11,030-11,300"],["AS","W.-Dornap","11,700"]],
@@ -117,7 +117,7 @@ A535:[{from:0.262,to:12.811,name:"AM Remscheid",address:"Talsperre 23, 42859 Rem
 A542:[{from:4.055,to:8.754,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}]
 };
 
-// --- NWSIB BKM DATEN (ersetzt geoPaths) ---
+//NWSIB BKM DATENBESTAND
 let strassenDaten = null;
 let gpsWatchId = null;
 
@@ -133,14 +133,14 @@ fetch('Abschnitt.json')
         console.error(err);
     });
 
-// --- FUNKTIONEN ---
+//FUNKTIONEN
 
 function zeigeListe(){
 let a=document.getElementById("autobahn").value;
 let tbody=document.getElementById("liste");
 tbody.innerHTML="";
 
-// Falls es eine Straße ist, die nicht in den Limits liegt (durch GPS erfasst)
+
 if(!grenzen[a]) return;
 
 let min=grenzen[a][0];
@@ -185,7 +185,7 @@ sel.appendChild(option);
 });
 }
 
-// --- NEUE BKM TRACKING LOGIK ---
+
 
 function starteGPS() {
     const info = document.getElementById("gps-info");
@@ -201,7 +201,7 @@ function starteGPS() {
         return;
     }
 
-    // Wenn GPS bereits läuft -> STOPPEN
+   
     if (gpsWatchId !== null) {
         navigator.geolocation.clearWatch(gpsWatchId);
         gpsWatchId = null;
@@ -235,8 +235,7 @@ function berechneBKM(lat, lon) {
         const aktuellerPunkt = turf.point([lon, lat]);
         const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
         
-        // --- 1. NEU: Checke, ob wir überhaupt auf einer Autobahn sind (< 100 Meter) ---
-        // Turf gibt die Distanz standardmäßig in Kilometern zurück
+
         if (snapped.properties.dist > 0.1) { 
             document.getElementById("gps-info").innerText = `⚠️ Keine Autobahn in der Nähe (nächste: ${Math.round(snapped.properties.dist * 1000)}m entfernt).`;
             return;
@@ -246,17 +245,16 @@ function berechneBKM(lat, lon) {
         const originalFeature = strassenDaten.features[index];
         const p = originalFeature.properties; 
 
-        // --- 2. NEU: Robustere Formatierung von STRKL und STRNR ---
         const strKl  = (p.STRKL || "").trim(); 
         const strNrRaw = p.STRNR || "";
-        const strNr = parseInt(strNrRaw, 10); // Macht aus "046" eine saubere "46"
+        const strNr = parseInt(strNrRaw, 10); 
         const statAnf = parseFloat(p.STATANF) || 0;
 
         const meterAufAbschnitt = snapped.properties.location; 
         const gesamtMeter = statAnf + meterAufAbschnitt;
         const aktuellerBKM = (gesamtMeter / 1000);
 
-        // Name zusammensetzen (z.B. "A" + 46 = "A46")
+
         const erkannteAutobahn = strKl + (!isNaN(strNr) ? strNr : strNrRaw);
         const select = document.getElementById("autobahn");
         
