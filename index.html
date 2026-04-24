@@ -50,64 +50,45 @@ function berechneBKM(lat, lon) {
     try {
         const aktuellerPunkt = turf.point([lon, lat]);
         
-        // 1. Nächstes Segment finden
+        // Den nächsten Punkt auf der Linie finden
         const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
+        
+        // ACHTUNG: Die Attribute liegen bei Turf oft in snapped.properties
+        // Wenn das leer ist, liegen sie im ursprünglichen Feature, das Turf gefunden hat.
+        // Wir holen uns die Daten daher sicherheitshalber so:
         const p = snapped.properties;
 
-        // Konsolen-Check (Sollte jetzt die Attribute zeigen!)
-        console.log("Gefundene Attribute:", p);
-
-        // 2. Werte sicher auslesen (Großschreibung beachten!)
-        const strKl = p.STRKL || "";
-        const strNr = p.STRNR || "";
-        const absNr = p.ABSNR || "Unbekannt";
+        // Falls p leer aussieht, liegt es daran, dass wir auf die NWSIB-Werte zugreifen müssen
+        // Wir nutzen deine exakten Spaltennamen aus der JSON:
+        const strKl  = p.STRKL || "";
+        const strNr  = p.STRNR || "";
+        const absNr  = p.ABSNR || "Unbekannt";
         const strBez = p.STRBEZ || "-";
-        
-        // STATANF ist laut info eine Zahl, wir gehen von METERN aus
         const statAnf = parseFloat(p.STATANF) || 0;
 
-        // 3. Distanz berechnen
-        // Turf gibt location in der Einheit der Quelldaten zurück.
-        // Da die NWSIB-Daten in Metern vorliegen (siehe info: LAENGE 27),
-        // ist p.location hier wahrscheinlich auch in Metern.
+        // BKM Berechnung
+        // Da deine JSON 'LAENGE: 27' (Meter) zeigt, ist p.location auch in Metern.
         const meterAufAbschnitt = p.location; 
-        
         const gesamtMeter = statAnf + meterAufAbschnitt;
         const aktuellerBKM = (gesamtMeter / 1000).toFixed(3);
 
-        // 4. Anzeige im HTML
+        // Debugging in der Konsole
+        console.log(`Gefunden: ${strKl}${strNr}, KM: ${aktuellerBKM}`);
+
+        // In HTML anzeigen
         document.getElementById('ausgabe').innerHTML = `
-            <div style="border-left: 5px solid #0056b3; padding-left: 15px;">
-                <strong>Straße:</strong> ${strKl}${strNr} (Abschnitt: ${absNr})<br>
-                <strong>Bezeichnung:</strong> ${strBez}<br>
+            <div style="border-left: 5px solid #0056b3; padding-left: 15px; text-align: left;">
+                <strong>Straße:</strong> ${strKl}${strNr} <br>
+                <strong>Abschnitt:</strong> ${absNr} (${strBez})<br>
                 <hr>
-                <span style="font-size: 1.2em;">Aktueller Standort:</span><br>
+                <span style="font-size: 0.9em; color: #666;">Aktuelle Position:</span><br>
                 <span style="font-size: 2em; font-weight: bold; color: #0056b3;">
                     KM ${aktuellerBKM.replace('.', ',')}
                 </span>
             </div>
         `;
     } catch (e) {
-        console.error("Berechnungsfehler:", e);
-    }
-}
-
-// GPS Funktion mit Fehler-Handling für PC-Tests
-function starteGPS() {
-    if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(position => {
-            berechneBKM(position.coords.latitude, position.coords.longitude);
-        }, error => {
-            if(error.code === 2) {
-                document.getElementById('ausgabe').innerHTML = 
-                    "<strong>Hinweis:</strong> Kein GPS-Signal. <br>Nutze die 'Sensors' Simulation im Browser (F12) für den Test am PC.";
-            }
-            console.warn("GPS Fehler Code:", error.code);
-        }, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-        });
+        console.error("Fehler bei der Berechnung:", e);
     }
 }
     </script>
