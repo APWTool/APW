@@ -73,9 +73,9 @@ function berechneBKM(lat, lon) {
     const statAnf = parseFloat(getProp(['STATANF', 'statanf', 'STAT_VON'])) || 0;
 
     // BKM Berechnung (Turf liefert location in KM)
-    const meterAufAbschnitt = snapped.properties.location * 1000;
-    const gesamtMeter = statAnf + meterAufAbschnitt;
-    const aktuellerBKM = (gesamtMeter / 1000).toFixed(3);
+const meterAufAbschnitt = p.location; // Falls p.location schon Meter sind
+const gesamtMeter = statAnf + meterAufAbschnitt;
+const aktuellerBKM = (gesamtMeter / 1000).toFixed(3);
 
     // In HTML anzeigen
     document.getElementById('ausgabe').innerHTML = `
