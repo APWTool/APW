@@ -6,38 +6,53 @@
 <title>Autobahn Tool - Profi Version (GeoJSON)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/turf/6.5.0/turf.min.js"></script>
 <style>
-body{font-family:Arial;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
-.card{background:white;padding:20px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,0.1);max-width:450px;width:100%}
-h2{text-align:center}
-select,input,button{width:100%;margin-top:10px;padding:10px;border-radius:6px;border:1px solid #ccc}
-button{background:#007BFF;color:white;border:none;cursor:pointer;font-weight:bold;transition:0.3s;}
-button:hover{background:#0056b3}
-button.active{background:#dc3545;}
-table{width:100%;margin-top:20px;border-collapse:collapse;font-size:0.9em;}
-th,td{border:1px solid #ccc;padding:8px}
-th{background:#eee}
-.bar{margin-top:15px;height:20px;background:#ddd;border-radius:10px;overflow:hidden}
-.fill{height:100%;background:#007BFF;width:0%;transition:width 0.3s}
-.result{margin-top:10px;padding:10px;background:#f0f4f8;border-radius:8px}
-#gps-info {font-size: 0.85em; background: #fff; padding: 8px; border: 1px solid #ccc; border-radius: 6px; margin-top: 10px; line-height: 1.4;}
+/* Design-Fix: Einheitliche Proportionen und Box-Sizing */
+body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f8; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+.card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 3px 10px rgba(0,0,0,0.1); max-width: 450px; width: 100%; box-sizing: border-box; }
+h2 { text-align: center; color: #333; margin-top: 0; }
+
+/* WICHTIG: box-sizing: border-box sorgt dafür, dass 100% Breite exakt 100% bleiben */
+select, input, button { 
+    width: 100%; 
+    margin-top: 10px; 
+    padding: 12px; 
+    border-radius: 6px; 
+    border: 1px solid #ccc; 
+    box-sizing: border-box; 
+    font-size: 16px; 
+    font-family: inherit;
+}
+button { background: #007BFF; color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+button:hover { background: #0056b3; }
+button.active { background: #dc3545; }
+
+table { width: 100%; margin-top: 20px; border-collapse: collapse; font-size: 0.9em; }
+th, td { border: 1px solid #ccc; padding: 10px 8px; text-align: left; }
+th { background: #eee; }
+.bar { margin-top: 15px; height: 20px; background: #ddd; border-radius: 10px; overflow: hidden; }
+.fill { height: 100%; background: #007BFF; width: 0%; transition: width 0.3s; }
+.result { margin-top: 15px; padding: 15px; background: #f0f4f8; border-radius: 8px; border-left: 4px solid #007BFF; }
+.result p { margin: 8px 0; }
+#gps-info { font-size: 0.9em; background: #fff; padding: 12px; border: 1px solid #ccc; border-radius: 6px; margin-top: 10px; line-height: 1.4; text-align: center; }
 </style>
 </head>
 <body>
 
 <div class="card">
 <h2>Zuständigkeitsfinder</h2>
+
 <select id="autobahn" onchange="zeigeListe(); updateRichtung(); berechnen();">
-<option value="A1">A1</option>
-<option value="A3">A3</option>
-<option value="A44">A44</option>
-<option value="A46">A46</option>
-<option value="A57">A57</option>
-<option value="A59">A59</option>
-<option value="A535">A535</option>
-<option value="A542">A542</option>
+    <option value="A1">A1</option>
+    <option value="A3">A3</option>
+    <option value="A44">A44</option>
+    <option value="A46">A46</option>
+    <option value="A57">A57</option>
+    <option value="A59">A59</option>
+    <option value="A535">A535</option>
+    <option value="A542">A542</option>
 </select>
 
-<input id="km" placeholder="Kilometer eingeben" oninput="berechnen()">
+<input id="km" placeholder="Kilometer (z.B. 378,500)" oninput="berechnen()">
 
 <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
 <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
@@ -45,16 +60,16 @@ th{background:#eee}
 <button onclick="berechnen()">Manuell Berechnen</button>
 
 <div class="result">
-<p><strong>Bereich:</strong> <span id="b"></span></p>
-<p><strong>Gemeinde:</strong> <span id="g"></span></p>
-<p><strong>Meisterei:</strong> <span id="m"></span></p>
-<p><strong>Adresse:</strong> <span id="m_address"></span></p>
-<div class="bar"><div id="progress" class="fill"></div></div>
+    <p><strong>Bereich:</strong> <span id="b"></span></p>
+    <p><strong>Gemeinde:</strong> <span id="g"></span></p>
+    <p><strong>Meisterei:</strong> <span id="m"></span></p>
+    <p><strong>Adresse:</strong> <span id="m_address"></span></p>
+    <div class="bar"><div id="progress" class="fill"></div></div>
 </div>
 
 <table>
-<thead><tr><th>Typ</th><th>Name</th><th>Km</th></tr></thead>
-<tbody id="liste"></tbody>
+    <thead><tr><th>Typ</th><th>Name</th><th>Km</th></tr></thead>
+    <tbody id="liste"></tbody>
 </table>
 </div>
 
@@ -67,13 +82,13 @@ th{background:#eee}
 <button onclick="berechneWeg()">Berechnen</button>
 
 <div class="result">
-<p><strong>Ziel km:</strong> <span id="ziel_km"></span></p>
-<p><strong>Nächste AS:</strong> <span id="next_as"></span></p>
+    <p><strong>Ziel km:</strong> <span id="ziel_km"></span></p>
+    <p><strong>Nächste AS:</strong> <span id="next_as"></span></p>
 </div>
 </div>
 
 <script>
-// --- 1. DEINE ORIGINAL-DATEN (Unverändert!) ---
+// --- 1. DATEN (Unverändert) ---
 const grenzen={A1:[363.315,381.646],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 
 const listen={
@@ -120,8 +135,7 @@ A535:[{from:0.262,to:12.811,name:"AM Remscheid",address:"Talsperre 23, 42859 Rem
 A542:[{from:4.055,to:8.754,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}]
 };
 
-
-// --- 2. NEUE ECHTE GPS LOGIK MIT GEOJSON ---
+// --- 2. GPS & GEOJSON LOGIK ---
 let datenLand = [], datenBAB = [], referenzPunkte = [];
 let datenGeladen = false;
 let watchId = null;
@@ -137,7 +151,7 @@ Promise.all([
     datenGeladen = true;
     document.getElementById("gps-info").innerHTML = '<span style="color:green; font-weight:bold;">✅ Geo-Datenbank geladen. GPS bereit.</span>';
 }).catch(err => {
-    document.getElementById("gps-info").innerHTML = '<span style="color:red; font-weight:bold;">❌ Fehler beim Laden der .json/.geojson Dateien</span>';
+    document.getElementById("gps-info").innerHTML = '<span style="color:red; font-weight:bold;">❌ Fehler beim Laden der GeoJSON Dateien!</span><br><small>Stelle sicher, dass die Dateien im selben Ordner liegen und der Server läuft.</small>';
     console.error(err);
 });
 
@@ -167,30 +181,37 @@ function toggleGPS() {
         btn.classList.add("active");
         info.innerHTML = "⏳ Suche Satelliten...";
         
+        // BUGFIX für "Suche Satelliten" im Browser: 
+        // maximumAge: 0 erzwingt frische Daten. timeout fängt Hänger ab.
         watchId = navigator.geolocation.watchPosition(pos => {
-            verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-        }, err => info.innerText = "❌ GPS-Fehler: " + err.message, { enableHighAccuracy: true, maximumAge: 1000 });
+            try {
+                verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+            } catch (error) {
+                console.error(error);
+                info.innerHTML = "❌ Berechnungsfehler im Code!";
+            }
+        }, err => {
+            info.innerHTML = "❌ GPS-Fehler: " + err.message + " (Ggf. blockiert der Browser die Ortung)";
+            console.error("GPS Error:", err);
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
     }
 }
 
 function verarbeiteGPS(lat, lon, acc) {
     const pt = turf.point([lon, lat]);
     
-    // Nächste Linie finden
     let nBAB = findeNaechsteLinie(datenBAB, pt);
     let nLand = findeNaechsteLinie(datenLand, pt);
     
-    // Autobahn hat Vorrang bei < 80 Metern Abstand (0.08 km)
+    // Priorität Autobahn: Nur wenn näher als 80m
     let sel = (nBAB && nBAB.dist <= 0.08) ? nBAB : nLand;
 
     if (sel) {
         const props = sel.feature.properties;
         const strName = ((props.STRKL || "") + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
         
-        // Berechne Kilometer anhand der neuen Referenzpunkte
         let bkm = berechneGoldgriffBKM(pt, strName);
         
-        // Trage Daten in UI ein
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
         
         const dropdown = document.getElementById("autobahn");
@@ -201,10 +222,11 @@ function verarbeiteGPS(lat, lon, acc) {
             document.getElementById("gps-info").innerHTML = `ℹ️ ${strName} erkannt (Nicht in Zuständigkeit) | BKM: ${bkm.toFixed(3)}`;
         }
 
-        // Trigger die Berechnungen für Tabelle und Zuständigkeiten
         zeigeListe();
         updateRichtung();
         berechnen();
+    } else {
+        document.getElementById("gps-info").innerHTML = `❓ Keine Straße in direkter Nähe gefunden.`;
     }
 }
 
@@ -217,10 +239,10 @@ function berechneGoldgriffBKM(meinPunkt, strName) {
         let ptsColl = turf.featureCollection(passendePunkte);
         let closest = turf.nearestPoint(meinPunkt, ptsColl);
         let refKM = parseFloat(closest.properties.Kilometer);
-        let dist = turf.distance(meinPunkt, closest); // in KM
+        let dist = turf.distance(meinPunkt, closest); // KM
         return refKM + dist;
     }
-    return 0; // Fallback
+    return 0; 
 }
 
 function findeNaechsteLinie(liste, pt) {
@@ -232,26 +254,25 @@ function findeNaechsteLinie(liste, pt) {
     return found ? { feature: found, dist: min } : null;
 }
 
-
-// --- 3. DEINE ORIGINAL-FUNKTIONEN (Unverändert!) ---
-
+// --- 3. UI FUNKTIONEN (Unverändert) ---
 function zeigeListe(){
 let a=document.getElementById("autobahn").value;
 let tbody=document.getElementById("liste");
 tbody.innerHTML="";
 
-if(!grenzen[a]) return; // Bugfix falls unbekannte Straße
+if(!grenzen[a]) return;
 
 let min=grenzen[a][0];
 let max=grenzen[a][1];
 document.getElementById("b").innerText=min.toFixed(3).replace('.',',')+" - "+max.toFixed(3).replace('.',',');
 
-listen[a].forEach(e=>{
-let tr=document.createElement("tr");
-tr.innerHTML=`<td>${e[0]}</td><td>${e[1]}</td><td>${e[2]}</td>`;
-tbody.appendChild(tr);
-});
-
+if(listen[a]){
+    listen[a].forEach(e=>{
+    let tr=document.createElement("tr");
+    tr.innerHTML=`<td>${e[0]}</td><td>${e[1]}</td><td>${e[2]}</td>`;
+    tbody.appendChild(tr);
+    });
+}
 updateZuständigkeit();
 }
 
@@ -322,6 +343,5 @@ document.getElementById("next_as").innerText=next;
 zeigeListe();
 updateRichtung();
 </script>
-
 </body>
 </html>
