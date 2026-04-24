@@ -228,10 +228,19 @@ function toggleGPS(){
     } else {
         if(!navigator.geolocation) return info.innerText="GPS nicht unterstützt";
         btn.innerHTML="⏹️ GPS stoppen"; btn.classList.add("active"); info.innerHTML="⏳ Suche Signal...";
-        watchId=navigator.geolocation.watchPosition(pos=>{
-            try{verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);}
-            catch(e){info.innerHTML="❌ Fehler: "+e.message;}
-        }, err=>{info.innerHTML="❌ GPS-Fehler: "+err.message;}, {enableHighAccuracy:true, maximumAge:0});
+        
+        // Ändere diese Stelle:
+watchId = navigator.geolocation.watchPosition(pos => {
+    try { verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy); }
+    catch(e) { info.innerHTML = "❌ Fehler: " + e.message; }
+}, err => { 
+    info.innerHTML = "❌ GPS-Fehler: " + err.message; 
+    
+}, { 
+    enableHighAccuracy: true, 
+    maximumAge: 30000, // Erlaubt 30 Sek. alte Daten
+    timeout: 10000     // Bricht nach 10 Sek. die Suche ab und gibt einen Fehler aus
+});
     }
 }
 
