@@ -208,13 +208,24 @@ function toggleGPS() {
 function verarbeiteGPS(lat, lon, acc) {
     const pt = turf.point([lon, lat]);
     
+    // 1. Suche erst nach Autobahnen (BAB)
     let nBAB = findeNaechsteLinie(datenBAB, pt);
+    
+    // 2. Suche nach Landstraßen
     let nLand = findeNaechsteLinie(datenLand, pt);
     
-    let sel = (nBAB && nBAB.dist <= 0.08) ? nBAB : nLand;
+    let sel = null;
+
+    // PRIORISIERUNG: 
+    // Wenn eine Autobahn näher als 150m (0.15 km) ist, gewinnt sie IMMER.
+    if (nBAB && nBAB.dist <= 0.15) {
+        sel = nBAB;
+    } else if (nLand) {
+        // Falls keine Autobahn da ist, nimm die Landstraße
+        sel = nLand;
+    }
 
     if (sel) {
-        // Sicherstellen, dass Properties existieren
         const props = sel.feature.properties || {};
         const strName = ((props.STRKL || "") + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
         
@@ -223,18 +234,23 @@ function verarbeiteGPS(lat, lon, acc) {
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
         
         const dropdown = document.getElementById("autobahn");
+        
+        // Prüfen ob die erkannte Straße in deiner Liste ist
         if (Array.from(dropdown.options).some(o => o.value === strName)) {
             dropdown.value = strName;
-            document.getElementById("gps-info").innerHTML = `<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | BKM: ${bkm.toFixed(3)} | Gen.: ±${acc.toFixed(0)}m`;
+            document.getElementById("gps-info").innerHTML = 
+                `<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span><br>` +
+                `BKM: ${bkm.toFixed(3)} | Abweichung: ${(sel.dist * 1000).toFixed(0)}m`;
         } else {
-            document.getElementById("gps-info").innerHTML = `ℹ️ ${strName} erkannt (Nicht in Zuständigkeit) | BKM: ${bkm.toFixed(3)}`;
+            // Falls es z.B. die L74 ist, die nicht im Dropdown steht:
+            document.getElementById("gps-info").innerHTML = 
+                `<span style="color:orange;">ℹ️ ${strName} erkannt</span><br>` +
+                `<small>(Nicht in deinen Stammdaten hinterlegt)</small>`;
         }
 
         zeigeListe();
         updateRichtung();
         berechnen();
-    } else {
-        document.getElementById("gps-info").innerHTML = `❓ Keine Straße im Umkreis gefunden.`;
     }
 }
 
