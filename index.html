@@ -247,21 +247,20 @@ watchId = navigator.geolocation.watchPosition(pos => {
 function verarbeiteGPS(lat, lon, acc){
     const pt=turf.point([lon, lat]);
     
-    // Beide Suchen ausführen
-    let nBAB=findeNaechsteLinie(datenBAB, pt);
-    let nLand=findeNaechsteLinie(datenLand, pt);
+    // Wir holen uns eine Liste aller "erlaubten" Autobahnen (A1, A3, A46...)
+    const meineAutobahnen = Object.keys(grenzen);
+
+    // Suche 1: Finde die nächste Linie, aber ignoriere ALLES, was nicht in meiner Liste steht!
+    let nBAB=findeNaechsteLinie(datenBAB, pt, meineAutobahnen);
+    
+    // Suche 2: Normale Suche (als Backup für Landstraßen, falls gewünscht)
+    let nLand=findeNaechsteLinie(datenLand, pt, null);
     
     let sel = null;
 
-    // --- DIE RADIKALE AUTOBAHN-PRIORITÄT ---
-    // Wenn eine Autobahn in bis zu 2 Kilometern Entfernung gefunden wird, 
-    // gewinnt sie IMMER. Die Landstraße wird komplett blockiert.
     if (nBAB && nBAB.dist <= 2.0) {
         sel = nBAB;
-    } 
-    // Eine Landstraße wird nur noch akzeptiert, wenn wir wirklich 
-    // mitten im Nirgendwo (mehr als 2km von der BAB entfernt) sind.
-    else if (nLand) {
+    } else if (nLand) {
         sel = nLand;
     }
 
@@ -289,6 +288,26 @@ function verarbeiteGPS(lat, lon, acc){
     } else {
         document.getElementById("gps-info").innerHTML=`❓ Keine Straße im Umkreis gefunden.`;
     }
+}
+
+// Die verbesserte Suchfunktion mit eingebautem Filter
+function findeNaechsteLinie(liste, pt, filterNamen){
+    let min=Infinity, found=null;
+    liste.forEach(f=>{
+        try{ 
+            // Wenn ein Filter gesetzt ist, prüfen wir den Straßennamen zuerst
+            if (filterNamen) {
+                const props=f.properties||{};
+                const name=((props.STRKL||"")+(props.STRNR||"")).toUpperCase().replace(/\s/g,'');
+                // Wenn der Name NICHT in unseren VIP-Autobahnen ist, überspringen wir die Linie!
+                if (!filterNamen.includes(name)) return;
+            }
+
+            let d=turf.pointToLineDistance(pt, f); 
+            if(d<min){min=d; found=f;} 
+        } catch(e){}
+    });
+    return found ? {feature:found, dist:min} : null;
 }
 
 function berechneGoldgriffBKM(meinPunkt, strName){
