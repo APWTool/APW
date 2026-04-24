@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BKM Finder ALPHA</title>
+<title>BKM Finder ALPHA - High Precision</title>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <style>
     body{font-family:Arial,sans-serif;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
@@ -54,7 +54,7 @@
 </div>
 
 <script>
-// --- DEINE LISTEN BLEIBEN UNANGETASTET ---
+// --- DATENLISTEN ---
 const grenzen={A1:[363.315,381.658],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 const listen={
     A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
@@ -75,56 +75,41 @@ const meistereien={
     A46:[{from:70.815,to:80.770,name:"AM Kaarst"},{from:80.770,to:88.340,name:"AM Leverkusen"},{from:88.340,to:114.763,name:"AM Remscheid"}]
 };
 
-// Globale Variablen für getrennte Datennetze
-let datenA = [];
-let datenB = [];
-let datenL = [];
+let datenA = [], datenB = [], datenL = [];
 let datenGeladen = false;
 let gpsWatchId = null;
 
-// LADEPROZESS JSONS & DIREKTE TRENNUNG
 Promise.all([
     fetch('Abschnitt.json').then(res => res.json()),
     fetch('AbschnittBAB.json').then(res => res.json())
 ]).then(([dataLand, dataBAB]) => {
-    let alleFeatures = [...dataLand.features, ...dataBAB.features];
-    
-    // Sortiere direkt beim Laden nach Klasse (Arrays statt FeatureCollections)
-    alleFeatures.forEach(f => {
+    let alle = [...dataLand.features, ...dataBAB.features];
+    alle.forEach(f => {
         let kl = String(f.properties?.STRKL || "").trim().toUpperCase();
         if (kl === "A") datenA.push(f);
         else if (kl === "B") datenB.push(f);
         else datenL.push(f);
     });
-    
     datenGeladen = true;
-    document.getElementById("gps-info").innerText = "Bereit (Alle Netze geladen & sortiert).";
+    document.getElementById("gps-info").innerText = "Bereit (Priorisierung aktiv).";
 }).catch(err => {
-    document.getElementById("gps-info").innerText = "Fehler: Kartendaten konnten nicht geladen werden!";
-    console.error(err);
+    document.getElementById("gps-info").innerText = "Fehler beim Laden!";
 });
 
-// --- NEUE, EXAKTE SUCH-FUNKTION ---
-// Geht jede Linie einzeln durch, um Turf-Fehler zu vermeiden
 function findeNaechsteLinie(featuresArray, pt) {
     if (!featuresArray || featuresArray.length === 0) return null;
     let minDist = Infinity;
     let bestPoint = null;
-
-    for (let i = 0; i < featuresArray.length; i++) {
-        let f = featuresArray[i];
+    featuresArray.forEach(f => {
         try {
-            // Berechnet den Punkt exakt auf dieser EINEN Linie
             let p = turf.nearestPointOnLine(f, pt, {units: 'kilometers'});
             if (p.properties.dist < minDist) {
                 minDist = p.properties.dist;
                 bestPoint = p;
-                bestPoint.properties.originalFeature = f; // Wir hängen die Rohdaten dran
+                bestPoint.properties.originalFeature = f;
             }
-        } catch (e) {
-            // Falls eine Linie fehlerhaft formatiert ist, überspringen
-        }
-    }
+        } catch (e) {}
+    });
     return bestPoint;
 }
 
@@ -149,61 +134,50 @@ function berechneBKM(lat, lon) {
     try {
         const pt = turf.point([lon, lat]);
         
-        // Suche jeweils die Nächste aus A, B und L mit der exakten Schleife
         let nearA = findeNaechsteLinie(datenA, pt);
         let nearB = findeNaechsteLinie(datenB, pt);
         let nearL = findeNaechsteLinie(datenL, pt);
 
-        let distA = nearA ? nearA.properties.dist : Infinity;
-        let distB = nearB ? nearB.properties.dist : Infinity;
-        let distL = nearL ? nearL.properties.dist : Infinity;
-
         let gewaehltesFeature = null;
 
-        // PRIORITÄTS-LOGIK
-        if (distA <= 0.3) { 
-            // Autobahn gewinnt, wenn unter 300m entfernt
+        // --- VERSCHÄRFTE PRIORITÄT ---
+        // 1. Suche erst Autobahn im 1km Radius
+        if (nearA && nearA.properties.dist <= 1.0) {
             gewaehltesFeature = nearA;
         } 
-        else if (distB <= 0.25) { 
-            // Bundesstraße gewinnt, wenn unter 250m entfernt
+        // 2. Wenn keine Autobahn, suche Bundesstraße im 500m Radius
+        else if (nearB && nearB.properties.dist <= 0.5) {
             gewaehltesFeature = nearB;
         } 
-        else { 
-            // Fallback: Was auch immer wirklich am nächsten ist
-            let minDist = Math.min(distA, distB, distL);
-            if (minDist === distA) gewaehltesFeature = nearA;
-            else if (minDist === distB) gewaehltesFeature = nearB;
-            else if (minDist === distL) gewaehltesFeature = nearL;
+        // 3. Fallback auf den absoluten Gewinner
+        else {
+            let dA = nearA ? nearA.properties.dist : Infinity;
+            let dB = nearB ? nearB.properties.dist : Infinity;
+            let dL = nearL ? nearL.properties.dist : Infinity;
+            let m = Math.min(dA, dB, dL);
+            if (m === dA) gewaehltesFeature = nearA;
+            else if (m === dB) gewaehltesFeature = nearB;
+            else gewaehltesFeature = nearL;
         }
 
         if(!gewaehltesFeature) return;
 
-        // Eigenschaften extrahieren
-        const featProps = gewaehltesFeature.properties.originalFeature.properties;
-        
-        const strKl = String(featProps.STRKL || "").trim();
-        const strNr = String(featProps.STRNR || "").trim();
-        const strName = strKl + strNr;
+        const fP = gewaehltesFeature.properties.originalFeature.properties;
+        const sName = String(fP.STRKL || "").trim() + String(fP.STRNR || "").trim();
         const dist = Math.round(gewaehltesFeature.properties.dist * 1000);
+        const bkm = ((parseFloat(fP.STATANF) || 0) + (gewaehltesFeature.properties.location * 1000)) / 1000;
 
-        // Berechnung Kilometer
-        const statAnf = parseFloat(featProps.STATANF) || 0;
-        const meter = (gewaehltesFeature.properties.location || 0) * 1000;
-        const bkm = (statAnf + meter) / 1000;
-
-        // Anzeige updaten
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
         const select = document.getElementById("autobahn");
-        const inDb = Array.from(select.options).some(o => o.value === strName);
+        const inDb = Array.from(select.options).some(o => o.value === sName.toUpperCase());
 
         if (inDb) {
-            select.value = strName;
+            select.value = sName.toUpperCase();
             zeigeListe();
             updateZuständigkeit();
-            document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${strName} erkannt</span>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+            document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${sName} erkannt</span>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
         } else {
-            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${strName} außerhalb Fokus-Liste</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${sName} (Nicht in Fokus-Liste)</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
             resetDetails();
         }
     } catch (e) { console.error(e); }
@@ -229,16 +203,13 @@ function updateZuständigkeit() {
     let val = document.getElementById("km").value.replace(',','.');
     let km = parseFloat(val);
     if(isNaN(km) || !grenzen[a]) return;
-    
-    let gName = "-", mName = "-";
-    if(gemeinden[a]) gemeinden[a].forEach(g => { if(km>=g.from && km<=g.to) gName=g.name; });
-    if(meistereien[a]) meistereien[a].forEach(m => { if(km>=m.from && km<=m.to) mName=m.name; });
-    
-    document.getElementById("g").innerText = gName;
-    document.getElementById("m").innerText = mName;
-    
-    let perc = ((km - grenzen[a][0]) / (grenzen[a][1] - grenzen[a][0])) * 100;
-    document.getElementById("progress").style.width = Math.max(0, Math.min(100, perc)) + "%";
+    let gN = "-", mN = "-";
+    if(gemeinden[a]) gemeinden[a].forEach(g => { if(km>=g.from && km<=g.to) gN=g.name; });
+    if(meistereien[a]) meistereien[a].forEach(m => { if(km>=m.from && km<=m.to) mN=m.name; });
+    document.getElementById("g").innerText = gN;
+    document.getElementById("m").innerText = mN;
+    let p = ((km - grenzen[a][0]) / (grenzen[a][1] - grenzen[a][0])) * 100;
+    document.getElementById("progress").style.width = Math.max(0, Math.min(100, p)) + "%";
 }
 
 function resetDetails() {
