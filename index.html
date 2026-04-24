@@ -249,17 +249,37 @@ function verarbeiteGPS(lat, lon, acc){
     let nBAB=findeNaechsteLinie(datenBAB, pt);
     let nLand=findeNaechsteLinie(datenLand, pt);
     let sel=(nBAB&&nBAB.dist<=0.15)?nBAB:nLand;
+    
     if(sel){
         const props=sel.feature.properties||{};
         const strName=((props.STRKL||"")+(props.STRNR||"")).toUpperCase().replace(/\s/g,'');
         let bkm=berechneGoldgriffBKM(pt, strName);
+        
         document.getElementById("km").value=bkm.toFixed(3).replace('.',',');
         const drop=document.getElementById("autobahn");
+        
+        // LOGIK-FIX: Nur updaten, wenn es "unsere" Autobahn ist
         if(Array.from(drop.options).some(o=>o.value===strName)){
             drop.value=strName;
             document.getElementById("gps-info").innerHTML=`<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | ±${acc.toFixed(0)}m`;
+            
+            // Nur bei bekannten Autobahnen Tabellen & Balken aktualisieren
+            zeigeListe(); 
+            updateRichtung(); 
+            berechnen();
+        } else {
+            document.getElementById("gps-info").innerHTML=`<span style="color:orange;font-weight:bold;">ℹ️ ${strName} erkannt</span> (Nicht im Fokus)`;
+            
+            // Balken und Zuständigkeiten bei fremden Straßen auf "-" setzen
+            document.getElementById("b").innerText="-";
+            document.getElementById("g").innerText="-";
+            document.getElementById("m").innerText="-";
+            document.getElementById("m_address").innerText="-";
+            document.getElementById("progress").style.width="0%";
+            document.getElementById("liste").innerHTML="";
         }
-        zeigeListe(); updateRichtung(); berechnen();
+    } else {
+        document.getElementById("gps-info").innerHTML=`❓ Keine Straße in direkter Nähe gefunden.`;
     }
 }
 
