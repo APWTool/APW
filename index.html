@@ -246,14 +246,9 @@ watchId = navigator.geolocation.watchPosition(pos => {
 
 function verarbeiteGPS(lat, lon, acc){
     const pt=turf.point([lon, lat]);
-    
-    // Wir holen uns eine Liste aller "erlaubten" Autobahnen (A1, A3, A46...)
     const meineAutobahnen = Object.keys(grenzen);
-
-    // Suche 1: Finde die nächste Linie, aber ignoriere ALLES, was nicht in meiner Liste steht!
-    let nBAB=findeNaechsteLinie(datenBAB, pt, meineAutobahnen);
     
-    // Suche 2: Normale Suche (als Backup für Landstraßen, falls gewünscht)
+    let nBAB=findeNaechsteLinie(datenBAB, pt, meineAutobahnen);
     let nLand=findeNaechsteLinie(datenLand, pt, null);
     
     let sel = null;
@@ -267,17 +262,41 @@ function verarbeiteGPS(lat, lon, acc){
     if(sel){
         const props=sel.feature.properties||{};
         const strName=((props.STRKL||"")+(props.STRNR||"")).toUpperCase().replace(/\s/g,'');
-        let bkm=berechneGoldgriffBKM(pt, strName);
-        
-        document.getElementById("km").value=bkm.toFixed(3).replace('.',',');
         const drop=document.getElementById("autobahn");
         
         if(Array.from(drop.options).some(o=>o.value===strName)){
+            // --- AUTOBAHN LOGIK (Unverändert) ---
+            let bkm=berechneGoldgriffBKM(pt, strName);
+            document.getElementById("km").value=bkm.toFixed(3).replace('.',',');
             drop.value=strName;
             document.getElementById("gps-info").innerHTML=`<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | BKM: ${bkm.toFixed(3)} | Gen.: ±${acc.toFixed(0)}m`;
             zeigeListe(); updateRichtung(); berechnen();
+            
         } else {
-            document.getElementById("gps-info").innerHTML=`<span style="color:orange;font-weight:bold;">ℹ️ ${strName} erkannt</span> (Nicht im Fokus)`;
+            // --- NEU: LANDSTRASSEN LOGIK ---
+            
+            // 1. Abschnittsnummer auslesen (z.B. "1,2C")
+            let abschnitt = props.ABSNR || "Unbekannt";
+            
+            // 2. Zusatzinfos auslesen (z.B. "Ast" für Kreuzungen/Auffahrten)
+            let ast = props.ABSAST && props.ABSAST !== "" ? ` (${props.ABSAST})` : "";
+            
+            // 3. Exakte Distanz auf dieser Teilstrecke berechnen
+            // Turf berechnet den Punkt auf der Linie und gibt in 'location' die Kilometer vom Start der Linie zurück!
+            let snapped = turf.nearestPointOnLine(sel.feature, pt);
+            let distanzAufLinie = snapped.properties.location || 0;
+            
+            // 4. Echten Stationierungs-Kilometer berechnen (Start-KM + gefahrene Distanz)
+            let startKM = parseFloat(props.STATANF) || 0;
+            let aktuellerKM = startKM + distanzAufLinie;
+            
+            // 5. Schick formatieren und anzeigen
+            document.getElementById("gps-info").innerHTML=
+                `<span style="color:orange;font-weight:bold;">ℹ️ ${strName} erkannt</span><br>`+
+                `<small>Abschnitt: <b>${abschnitt}${ast}</b> | KM: <b>${aktuellerKM.toFixed(3)}</b></small>`;
+            
+            // UI der Autobahn-Elemente ausblenden, da wir auf der Landstraße sind
+            document.getElementById("km").value = "";
             document.getElementById("b").innerText="-";
             document.getElementById("g").innerText="-";
             document.getElementById("m").innerText="-";
