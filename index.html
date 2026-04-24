@@ -236,53 +236,61 @@ function berechneBKM(lat, lon) {
 
     try {
         const aktuellerPunkt = turf.point([lon, lat]);
-        const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
+        // Suche den nächsten Punkt auf der Linie
+        const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt, {units: 'kilometers'});
         
+        const distanzZurStrasse = snapped.properties.dist; // In Kilometern
 
-        if (snapped.properties.dist > 0.1) { 
-            document.getElementById("gps-info").innerText = `⚠️ Keine Autobahn in der Nähe (nächste: ${Math.round(snapped.properties.dist * 1000)}m entfernt).`;
+        // 1. Prüfung: Bist du wirklich auf der Autobahn?
+        // 0.05 km = 50 Meter Toleranz (Berücksichtigt GPS-Rauschen)
+        if (distanzZurStrasse > 0.05) { 
+            document.getElementById("gps-info").innerText = 
+                `⚠️ Zu weit entfernt: ${Math.round(distanzZurStrasse * 1000)}m. (Brauche < 50m)`;
             return;
         }
 
         const index = snapped.properties.index;
-        const originalFeature = strassenDaten.features[index];
-        const p = originalFeature.properties; 
+        const p = strassenDaten.features[index].properties; 
 
-        const strKl  = (p.STRKL || "").trim(); 
-        const strNrRaw = p.STRNR || "";
-        const strNr = parseInt(strNrRaw, 10); 
+        // 2. Einheiten-Korrektur:
+        // Turf 'location' ist KM. statAnf ist meist Meter.
         const statAnf = parseFloat(p.STATANF) || 0;
-
-        const meterAufAbschnitt = snapped.properties.location; 
+        const meterAufAbschnitt = snapped.properties.location * 1000; // KM in Meter umrechnen!
+        
         const gesamtMeter = statAnf + meterAufAbschnitt;
         const aktuellerBKM = (gesamtMeter / 1000);
 
+        // Autobahn-Name zusammenbauen (z.B. "A" + "46")
+        const strKl = (p.STRKL || "").trim(); 
+        const strNr = (p.STRNR || "").trim();
+        const erkannteAutobahn = strKl + strNr;
 
-        const erkannteAutobahn = strKl + (!isNaN(strNr) ? strNr : strNrRaw);
         const select = document.getElementById("autobahn");
-        
         let existiert = Array.from(select.options).some(opt => opt.value === erkannteAutobahn);
 
         if (existiert) {
             select.value = erkannteAutobahn;
-            document.getElementById("gps-info").innerText = `✅ Erkannt: ${erkannteAutobahn} (KM ${aktuellerBKM.toFixed(3)}) - Diff: ${Math.round(snapped.properties.dist * 1000)}m`;
-        } else {
-            document.getElementById("gps-info").innerText = `⚠️ ${erkannteAutobahn} erkannt, aber nicht im Tool! (KM ${aktuellerBKM.toFixed(3)})`;
-        }
-
-        document.getElementById("km").value = aktuellerBKM.toFixed(3).replace('.', ',');
-
-        if (existiert) {
+            document.getElementById("gps-info").innerText = 
+                `✅ ${erkannteAutobahn} erkannt (Präzision: ${Math.round(distanzZurStrasse * 1000)}m)`;
+            
+            document.getElementById("km").value = aktuellerBKM.toFixed(3).replace('.', ',');
+            
+            // UI Update
             zeigeListe();
             updateRichtung();
             berechnen();
+        } else {
+            document.getElementById("gps-info").innerText = 
+                `⚠️ ${erkannteAutobahn} nicht in Datenbank (KM ${aktuellerBKM.toFixed(3)})`;
         }
 
     } catch (e) {
-        console.error("Fehler:", e);
-        document.getElementById("gps-info").innerText = "Berechnungsfehler: " + e.message;
+        console.error("Berechnungsfehler:", e);
+        document.getElementById("gps-info").innerText = "Fehler: " + e.message;
     }
 }
+
+    
 function berechnen(){
 updateZuständigkeit();
 let km=parseFloat(document.getElementById("km").value.replace(',','.'));
