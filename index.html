@@ -189,33 +189,42 @@ sel.appendChild(option);
 
 function starteGPS() {
     const info = document.getElementById("gps-info");
+    const btn = document.querySelector("button[onclick='starteGPS()']");
+    const kmInput = document.getElementById("km");
     
     if (!strassenDaten) {
-        info.innerText = "⏳ Kartendaten (Abschnitt.json) laden noch...";
+        info.innerText = "⏳ Kartendaten laden noch...";
         return;
     }
-    
     if (!navigator.geolocation) {
         info.innerText = "❌ GPS nicht unterstützt";
         return;
     }
 
+    // Wenn GPS bereits läuft -> STOPPEN
     if (gpsWatchId !== null) {
-        info.innerText = "📡 GPS Tracking läuft bereits...";
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+        info.innerText = "⏹️ GPS gestoppt.";
+        btn.innerText = "📡 GPS Position holen (Live BKM)";
+        btn.style.background = "#007BFF"; // Wieder blau
+        kmInput.readOnly = false; // Manuelle Eingabe wieder erlauben
         return;
     }
 
+    // GPS STARTEN
     info.innerText = "⏳ Suche Signal...";
+    btn.innerText = "⏹️ GPS stoppen";
+    btn.style.background = "#dc3545"; // Rot zur Warnung
+    kmInput.readOnly = true; // Manuelle Eingabe sperren, während GPS läuft
 
     gpsWatchId = navigator.geolocation.watchPosition(position => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        berechneBKM(lat, lon);
+        berechneBKM(position.coords.latitude, position.coords.longitude);
     }, error => {
         info.innerText = "❌ GPS Fehler: " + error.message;
         console.error("GPS Fehler:", error);
     }, {
-        enableHighAccuracy: true // Auf true gesetzt für präzise Autobahndaten
+        enableHighAccuracy: true
     });
 }
 
@@ -226,38 +235,42 @@ function berechneBKM(lat, lon) {
         const aktuellerPunkt = turf.point([lon, lat]);
         const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
         
+        // --- 1. NEU: Checke, ob wir überhaupt auf einer Autobahn sind (< 100 Meter) ---
+        // Turf gibt die Distanz standardmäßig in Kilometern zurück
+        if (snapped.properties.dist > 0.1) { 
+            document.getElementById("gps-info").innerText = `⚠️ Keine Autobahn in der Nähe (nächste: ${Math.round(snapped.properties.dist * 1000)}m entfernt).`;
+            return;
+        }
+
         const index = snapped.properties.index;
         const originalFeature = strassenDaten.features[index];
         const p = originalFeature.properties; 
 
-        // Werte auslesen
-        const strKl  = p.STRKL || "";
-        const strNr  = p.STRNR || "";
+        // --- 2. NEU: Robustere Formatierung von STRKL und STRNR ---
+        const strKl  = (p.STRKL || "").trim(); 
+        const strNrRaw = p.STRNR || "";
+        const strNr = parseInt(strNrRaw, 10); // Macht aus "046" eine saubere "46"
         const statAnf = parseFloat(p.STATANF) || 0;
 
-        // BKM Berechnung
         const meterAufAbschnitt = snapped.properties.location; 
         const gesamtMeter = statAnf + meterAufAbschnitt;
         const aktuellerBKM = (gesamtMeter / 1000);
 
-        // Autobahn Name ermitteln (z.B. A46)
-        const erkannteAutobahn = strKl + strNr;
+        // Name zusammensetzen (z.B. "A" + 46 = "A46")
+        const erkannteAutobahn = strKl + (!isNaN(strNr) ? strNr : strNrRaw);
         const select = document.getElementById("autobahn");
         
-        // Prüfen, ob die erfasste Autobahn im Dropdown existiert
         let existiert = Array.from(select.options).some(opt => opt.value === erkannteAutobahn);
 
         if (existiert) {
             select.value = erkannteAutobahn;
-            document.getElementById("gps-info").innerText = `✅ Erkannt: ${erkannteAutobahn} (KM ${aktuellerBKM.toFixed(3)})`;
+            document.getElementById("gps-info").innerText = `✅ Erkannt: ${erkannteAutobahn} (KM ${aktuellerBKM.toFixed(3)}) - Diff: ${Math.round(snapped.properties.dist * 1000)}m`;
         } else {
-            document.getElementById("gps-info").innerText = `⚠️ ${erkannteAutobahn} erkannt, aber nicht im Tool hinterlegt! (KM ${aktuellerBKM.toFixed(3)})`;
+            document.getElementById("gps-info").innerText = `⚠️ ${erkannteAutobahn} erkannt, aber nicht im Tool! (KM ${aktuellerBKM.toFixed(3)})`;
         }
 
-        // KM-Feld aktualisieren
         document.getElementById("km").value = aktuellerBKM.toFixed(3).replace('.', ',');
 
-        // UI Updates ausführen, falls Autobahn unterstützt wird
         if (existiert) {
             zeigeListe();
             updateRichtung();
@@ -269,7 +282,6 @@ function berechneBKM(lat, lon) {
         document.getElementById("gps-info").innerText = "Berechnungsfehler: " + e.message;
     }
 }
-
 function berechnen(){
 updateZuständigkeit();
 let km=parseFloat(document.getElementById("km").value.replace(',','.'));
