@@ -135,7 +135,7 @@ A535:[{from:0.262,to:12.811,name:"AM Remscheid",address:"Talsperre 23, 42859 Rem
 A542:[{from:4.055,to:8.754,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}]
 };
 
-// --- 2. GPS & GEOJSON LOGIK ---
+// --- 2. KUGELSICHERE GPS & GEOJSON LOGIK ---
 let datenLand = [], datenBAB = [], referenzPunkte = [];
 let datenGeladen = false;
 let watchId = null;
@@ -145,20 +145,30 @@ Promise.all([
     fetch('AbschnittBAB.json').then(res => res.json()),
     fetch('BABKM.geojson').then(res => res.json())
 ]).then(([land, bab, punkte]) => {
-    datenLand = extrahiere(land);
-    datenBAB = extrahiere(bab);
-    referenzPunkte = punkte.features;
+    datenLand = extrahiere(land, true); // true = erzwinge Linien
+    datenBAB = extrahiere(bab, true);   // true = erzwinge Linien
+    referenzPunkte = extrahiere(punkte, false); // false = erlaube Punkte
     datenGeladen = true;
     document.getElementById("gps-info").innerHTML = '<span style="color:green; font-weight:bold;">✅ Geo-Datenbank geladen. GPS bereit.</span>';
 }).catch(err => {
-    document.getElementById("gps-info").innerHTML = '<span style="color:red; font-weight:bold;">❌ Fehler beim Laden der GeoJSON Dateien!</span><br><small>Stelle sicher, dass die Dateien im selben Ordner liegen und der Server läuft.</small>';
-    console.error(err);
+    document.getElementById("gps-info").innerHTML = '<span style="color:red; font-weight:bold;">❌ Fehler beim Laden der GeoJSON Dateien!</span>';
+    console.error("Ladefehler:", err);
 });
 
-function extrahiere(json) {
+function extrahiere(json, erwarteLinien) {
     let list = [];
+    if (!json || !json.features) return list;
+    
     json.features.forEach(f => {
-        try { turf.flatten(f).features.forEach(sub => list.push(sub)); } catch(e){}
+        try { 
+            turf.flatten(f).features.forEach(sub => {
+                // Sicherheitsfilter: Wenn Linien erwartet werden, werfe Punkte aus der Datei weg!
+                if (erwarteLinien && (!sub.geometry || !sub.geometry.type.includes('LineString'))) {
+                    return; 
+                }
+                list.push(sub);
+            }); 
+        } catch(e){ console.warn("Kaputtes Feature übersprungen", e); }
     });
     return list;
 }
@@ -181,18 +191,16 @@ function toggleGPS() {
         btn.classList.add("active");
         info.innerHTML = "⏳ Suche Satelliten...";
         
-        // BUGFIX für "Suche Satelliten" im Browser: 
-        // maximumAge: 0 erzwingt frische Daten. timeout fängt Hänger ab.
         watchId = navigator.geolocation.watchPosition(pos => {
             try {
                 verarbeiteGPS(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
             } catch (error) {
-                console.error(error);
-                info.innerHTML = "❌ Berechnungsfehler im Code!";
+                // HIER WIRD DER ECHTE FEHLER AUSGEGEBEN!
+                console.error("KRITISCHER FEHLER:", error);
+                info.innerHTML = `<span style="color:red;">❌ Fehler: ${error.message}</span>`;
             }
         }, err => {
-            info.innerHTML = "❌ GPS-Fehler: " + err.message + " (Ggf. blockiert der Browser die Ortung)";
-            console.error("GPS Error:", err);
+            info.innerHTML = "❌ GPS-Fehler: " + err.message;
         }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
     }
 }
@@ -203,11 +211,11 @@ function verarbeiteGPS(lat, lon, acc) {
     let nBAB = findeNaechsteLinie(datenBAB, pt);
     let nLand = findeNaechsteLinie(datenLand, pt);
     
-    // Priorität Autobahn: Nur wenn näher als 80m
     let sel = (nBAB && nBAB.dist <= 0.08) ? nBAB : nLand;
 
     if (sel) {
-        const props = sel.feature.properties;
+        // Sicherstellen, dass Properties existieren
+        const props = sel.feature.properties || {};
         const strName = ((props.STRKL || "") + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
         
         let bkm = berechneGoldgriffBKM(pt, strName);
@@ -217,7 +225,7 @@ function verarbeiteGPS(lat, lon, acc) {
         const dropdown = document.getElementById("autobahn");
         if (Array.from(dropdown.options).some(o => o.value === strName)) {
             dropdown.value = strName;
-            document.getElementById("gps-info").innerHTML = `<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | BKM: ${bkm.toFixed(3)} | Genauigkeit: ±${acc.toFixed(0)}m`;
+            document.getElementById("gps-info").innerHTML = `<span style="color:green;font-weight:bold;">✅ ${strName} erkannt</span> | BKM: ${bkm.toFixed(3)} | Gen.: ±${acc.toFixed(0)}m`;
         } else {
             document.getElementById("gps-info").innerHTML = `ℹ️ ${strName} erkannt (Nicht in Zuständigkeit) | BKM: ${bkm.toFixed(3)}`;
         }
@@ -226,21 +234,30 @@ function verarbeiteGPS(lat, lon, acc) {
         updateRichtung();
         berechnen();
     } else {
-        document.getElementById("gps-info").innerHTML = `❓ Keine Straße in direkter Nähe gefunden.`;
+        document.getElementById("gps-info").innerHTML = `❓ Keine Straße im Umkreis gefunden.`;
     }
 }
 
 function berechneGoldgriffBKM(meinPunkt, strName) {
     let passendePunkte = referenzPunkte.filter(f => 
-        f.properties.Bez && f.properties.Bez.toUpperCase().replace(/\s/g,'') === strName
+        f.properties && f.properties.Bez && f.properties.Bez.toUpperCase().replace(/\s/g,'') === strName
     );
 
     if (passendePunkte.length > 0) {
-        let ptsColl = turf.featureCollection(passendePunkte);
-        let closest = turf.nearestPoint(meinPunkt, ptsColl);
-        let refKM = parseFloat(closest.properties.Kilometer);
-        let dist = turf.distance(meinPunkt, closest); // KM
-        return refKM + dist;
+        try {
+            let ptsColl = turf.featureCollection(passendePunkte);
+            let closest = turf.nearestPoint(meinPunkt, ptsColl);
+            
+            // Kommas aus der JSON (falls vorhanden) in Punkte wandeln
+            let refKM_String = String(closest.properties.Kilometer).replace(',', '.');
+            let refKM = parseFloat(refKM_String);
+            
+            let dist = turf.distance(meinPunkt, closest); // in KM
+            return isNaN(refKM) ? 0 : refKM + dist;
+        } catch(e) {
+            console.error("Fehler bei Goldgriff-Berechnung", e);
+            return 0;
+        }
     }
     return 0; 
 }
@@ -248,13 +265,21 @@ function berechneGoldgriffBKM(meinPunkt, strName) {
 function findeNaechsteLinie(liste, pt) {
     let min = Infinity; let found = null;
     liste.forEach(f => {
-        let d = turf.pointToLineDistance(pt, f);
-        if (d < min) { min = d; found = f; }
+        // KUGELSICHERER CHECK: Ist es wirklich eine Linie?
+        if (f.geometry && (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString')) {
+            try {
+                let d = turf.pointToLineDistance(pt, f);
+                if (d < min) { min = d; found = f; }
+            } catch(e) {
+                // Fehler leise ignorieren, damit das Tool weiterläuft
+                console.warn("Distanzfehler bei Feature übersprungen");
+            }
+        }
     });
     return found ? { feature: found, dist: min } : null;
 }
 
-// --- 3. UI FUNKTIONEN (Unverändert) ---
+// --- 3. UI FUNKTIONEN ---
 function zeigeListe(){
 let a=document.getElementById("autobahn").value;
 let tbody=document.getElementById("liste");
