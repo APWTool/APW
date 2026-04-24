@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BKM Finder ALPHA</title>
+<title>BKM Finder ALPHA - Fix</title>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <style>
     body{font-family:Arial,sans-serif;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
@@ -38,7 +38,7 @@
 
     <input id="km" placeholder="Kilometer (z.B. 102,5)" oninput="updateZuständigkeit()">
     <button onclick="starteGPS()" id="gps-btn">📡 GPS Live-Erfassung</button>
-    <div id="gps-info">Lade Kartendaten...</div>
+    <div id="gps-info">Warte auf Initialisierung...</div>
     
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
@@ -54,10 +54,194 @@
 </div>
 
 <script>
-// --- DATENLISTEN ---
+// --- KONSTANTEN ---
 const grenzen={A1:[363.315,381.658],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 const listen={
     A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
     A3:[["PP","Stindertal","103,400"],["PP","Stinderhof","103,400"],["AK","Hilden","108,700"],["TuR","Heidi","113,100"],["AS","Solingen","117,400"],["AK","Langenfeld","118,400"],["PP","Reusrather Heide","121,600"]],
     A44:[["AS","Heiligenhaus","1,200"],["AS","Hetterscheidt","6,000"],["AS","Velbert-Nord","8,400"],["AS","Langenberg","11,900"],["AS","E.-Kupferd.-Dilldorf","14,100"],["AS","E.-Überruhr","16,800"]],
-    A46:[["AK","Neuss-Süd","70,800"],["AS","NE-Uedesheim","72,300"],["AS","D.-Bilk","76,300"],["AS","D.-Wersten","78,200"],["AS","D.-Holthausen","80,000"],["AS","D.-Eller","81,200"],["AK","Düsseldorf-Süd","82,000"],["AS","Erkrath","85,000"],["AK","Hilden","87,000"],["AS","Hilden","
+    A46:[["AK","Neuss-Süd","70,800"],["AS","NE-Uedesheim","72,300"],["AS","D.-Bilk","76,300"],["AS","D.-Wersten","78,200"],["AS","D.-Holthausen","80,000"],["AS","D.-Eller","81,200"],["AK","Düsseldorf-Süd","82,000"],["AS","Erkrath","85,000"],["AK","Hilden","87,000"],["AS","Hilden","87,400"],["AS","Haan-West","89,400"],["AS","Haan-Ost","94,200"],["AS","W.-Cronenberg","98,400"],["Kreuz","Sonnborn","99,500"],["AS","W.-Varresbeck","101,600"],["AS","W.-Katernberg","103,900"],["AS","W.-Elberfeld","105,700"],["AS","W.-Barmen","107,800"],["AS","W.-Wichlinghausen","110,000"],["AS","W.-Oberbarmen","113,900"]],
+    A57:[["AK","Neuss-Süd","90,300"],["AS","Dormagen","99,400"]],
+    A59:[["AK","Düsseldorf Süd","0,578"],["AS","D.-Benrath","1,800"],["AS","D.-Garath","4,600"],["AS","Richrath","9,000"],["AS","Monheim","11,400"],["AK","Monheim-Süd","13,100"]],
+    A535:[["AD","Velbert-Nord","0,262"],["AS","Velbert","1,800"],["AS","Tönnisheide","4,500"],["AS","Wülfrath","6,600"],["AS","W.-Dornap","11,700"]],
+    A542:[["AD","Monheim-Süd","4,055"],["AS","Reusrath","5,700"],["AS","Immigrath","8,000"],["AD","Langenfeld","8,754"]]
+};
+const gemeinden={
+    A1:[{from:363.315,to:365.711,name:"Schwelm"},{from:365.711,to:373.815,name:"Wuppertal"},{from:373.815,to:381.646,name:"Remscheid"}],
+    A3:[{from:101.2,to:102.996,name:"Düsseldorf"},{from:102.996,to:108.347,name:"Erkrath"},{from:108.347,to:112.770,name:"Hilden"},{from:114.264,to:122.819,name:"Langenfeld"}],
+    A46:[{from:70.815,to:74.919,name:"Neuss"},{from:74.919,to:85.416,name:"Düsseldorf"},{from:85.416,to:94.706,name:"Haan"},{from:94.706,to:114.763,name:"Wuppertal"}]
+};
+const meistereien={
+    A46:[{from:70.815,to:80.770,name:"AM Kaarst"},{from:80.770,to:88.340,name:"AM Leverkusen"},{from:88.340,to:114.763,name:"AM Remscheid"}]
+};
+
+let datenA = [], datenB = [], datenL = [];
+let datenGeladen = false;
+let gpsWatchId = null;
+
+// --- FUNKTIONEN ZUERST DEFINIEREN ---
+
+function starteGPS() {
+    const btn = document.getElementById("gps-btn");
+    if (!datenGeladen) {
+        alert("Daten werden noch geladen. Bitte kurz warten...");
+        return;
+    }
+    if (gpsWatchId) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+        btn.innerText = "📡 GPS Live-Erfassung starten";
+        btn.style.background = "#007BFF";
+        return;
+    }
+    btn.innerText = "⏹️ GPS stoppen";
+    btn.style.background = "#dc3545";
+    gpsWatchId = navigator.geolocation.watchPosition(pos => {
+        berechneBKM(pos.coords.latitude, pos.coords.longitude);
+    }, err => {
+        console.error("GPS Fehler:", err);
+        document.getElementById("gps-info").innerText = "GPS-Fehler: " + err.message;
+    }, { enableHighAccuracy: true });
+}
+
+function findeNaechsteLinie(featuresArray, pt) {
+    if (!featuresArray || featuresArray.length === 0) return null;
+    let minDist = Infinity;
+    let bestPoint = null;
+    featuresArray.forEach(f => {
+        try {
+            let p = turf.nearestPointOnLine(f, pt, {units: 'kilometers'});
+            if (p.properties.dist < minDist) {
+                minDist = p.properties.dist;
+                bestPoint = p;
+                bestPoint.properties.originalFeature = f;
+            }
+        } catch (e) {}
+    });
+    return bestPoint;
+}
+
+function berechneBKM(lat, lon) {
+    if (!datenGeladen) return;
+    try {
+        const pt = turf.point([lon, lat]);
+        let nearA = findeNaechsteLinie(datenA, pt);
+        let nearB = findeNaechsteLinie(datenB, pt);
+        let nearL = findeNaechsteLinie(datenL, pt);
+
+        let gewaehltesFeature = null;
+
+        if (nearA && nearA.properties.dist <= 1.0) {
+            gewaehltesFeature = nearA;
+        } else if (nearB && nearB.properties.dist <= 0.5) {
+            gewaehltesFeature = nearB;
+        } else {
+            let dA = nearA ? nearA.properties.dist : Infinity;
+            let dB = nearB ? nearB.properties.dist : Infinity;
+            let dL = nearL ? nearL.properties.dist : Infinity;
+            let m = Math.min(dA, dB, dL);
+            if (m === dA) gewaehltesFeature = nearA;
+            else if (m === dB) gewaehltesFeature = nearB;
+            else gewaehltesFeature = nearL;
+        }
+
+        if(!gewaehltesFeature) return;
+
+        const fP = gewaehltesFeature.properties.originalFeature.properties;
+        const sKl = String(fP.STRKL || "").trim().toUpperCase();
+        const sNr = String(fP.STRNR || "").trim();
+        const sName = sKl + sNr;
+        const dist = Math.round(gewaehltesFeature.properties.dist * 1000);
+        const bkm = ((parseFloat(fP.STATANF) || 0) + (gewaehltesFeature.properties.location * 1000)) / 1000;
+
+        document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
+        const select = document.getElementById("autobahn");
+        const inDb = Array.from(select.options).some(o => o.value === sName);
+
+        if (inDb) {
+            select.value = sName;
+            zeigeListe();
+            updateZuständigkeit();
+            document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${sName} erkannt</span>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+        } else {
+            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${sName} außerhalb Fokus-Liste</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+            resetDetails();
+        }
+    } catch (e) { console.error(e); }
+}
+
+function zeigeListe() {
+    let a = document.getElementById("autobahn").value;
+    let tbody = document.getElementById("liste");
+    tbody.innerHTML = "";
+    if(!grenzen[a]) return;
+    document.getElementById("b").innerText = grenzen[a][0].toFixed(3).replace('.',',') + " - " + grenzen[a][1].toFixed(3).replace('.',',');
+    if(listen[a]) {
+        listen[a].forEach(e => {
+            let tr = document.createElement("tr");
+            tr.innerHTML = `<td>${e[0]}</td><td>${e[1]}</td><td>${e[2]}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+function updateZuständigkeit() {
+    let a = document.getElementById("autobahn").value;
+    let val = document.getElementById("km").value.replace(',','.');
+    let km = parseFloat(val);
+    if(isNaN(km) || !grenzen[a]) return;
+    let gN = "-", mN = "-";
+    if(gemeinden[a]) gemeinden[a].forEach(g => { if(km>=g.from && km<=g.to) gN=g.name; });
+    if(meistereien[a]) meistereien[a].forEach(m => { if(km>=m.from && km<=m.to) mN=m.name; });
+    document.getElementById("g").innerText = gN;
+    document.getElementById("m").innerText = mN;
+    let p = ((km - grenzen[a][0]) / (grenzen[a][1] - grenzen[a][0])) * 100;
+    document.getElementById("progress").style.width = Math.max(0, Math.min(100, p)) + "%";
+}
+
+function resetDetails() {
+    document.getElementById("g").innerText = "-";
+    document.getElementById("m").innerText = "-";
+    document.getElementById("b").innerText = "-";
+    document.getElementById("progress").style.width = "0%";
+    document.getElementById("liste").innerHTML = "";
+}
+
+// --- INITIALISIERUNG AM ENDE ---
+document.getElementById("gps-info").innerText = "Lade JSON Daten...";
+
+Promise.all([
+    fetch('Abschnitt.json').then(res => res.json()),
+    fetch('AbschnittBAB.json').then(res => res.json())
+]).then(([dataLand, dataBAB]) => {
+    let alle = [...dataLand.features, ...dataBAB.features];
+    
+    alle.forEach(f => {
+        try {
+            let kl = String(f.properties?.STRKL || "").trim().toUpperCase();
+            // Nur flatten, wenn Geometrie vorhanden
+            if (f.geometry) {
+                let flattened = turf.flatten(f);
+                flattened.features.forEach(subFeat => {
+                    if (kl === "A") datenA.push(subFeat);
+                    else if (kl === "B") datenB.push(subFeat);
+                    else datenL.push(subFeat);
+                });
+            }
+        } catch (e) {
+            console.warn("Überspringe ungültiges Feature:", e);
+        }
+    });
+    
+    datenGeladen = true;
+    document.getElementById("gps-info").innerText = `Bereit (${datenA.length} A-Segmente geladen)`;
+    console.log("Initialisierung abgeschlossen.");
+}).catch(err => {
+    document.getElementById("gps-info").innerText = "KRITISCHER LADEFEHLER!";
+    console.error("Fetch Fehler:", err);
+});
+
+zeigeListe();
+</script>
+</body>
+</html>
