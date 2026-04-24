@@ -261,9 +261,20 @@ function berechneBKM(lat, lon) {
         const aktuellerBKM = (gesamtMeter / 1000);
 
         // Autobahn-Name zusammenbauen (z.B. "A" + "46")
-        const strKl = (p.STRKL || "").trim(); 
-        const strNr = (p.STRNR || "").trim();
-        const erkannteAutobahn = strKl + strNr;
+const index = snapped.properties.index;
+const p = strassenDaten.features[index].properties; 
+
+// Sicherstellen, dass alles Text ist
+const strKl = String(p.STRKL || "").trim(); 
+const strNr = String(p.STRNR || "").trim();
+const erkannteAutobahn = strKl + strNr;
+
+// Toleranz auf 200m erhöhen, falls GPS ungenau ist
+if (snapped.properties.dist > 0.2) { 
+    document.getElementById("gps-info").innerText = 
+        `⚠️ Distanz zu groß: ${Math.round(snapped.properties.dist * 1000)}m`;
+    return;
+}
 
         const select = document.getElementById("autobahn");
         let existiert = Array.from(select.options).some(opt => opt.value === erkannteAutobahn);
