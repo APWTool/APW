@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BKM Profi-Finder (Priorisiert)</title>
+<title>BKM Finder ALPHA</title>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <style>
     body{font-family:Arial,sans-serif;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
@@ -38,7 +38,7 @@
 
     <input id="km" placeholder="Kilometer (z.B. 102,5)" oninput="updateZuständigkeit()">
     <button onclick="starteGPS()" id="gps-btn">📡 GPS Live-Erfassung</button>
-    <div id="gps-info">Warte auf Kartendaten...</div>
+    <div id="gps-info">Lade Kartendaten...</div>
     
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
@@ -54,7 +54,7 @@
 </div>
 
 <script>
-// VOLLSTÄNDIGE LISTEN WIEDERHERGESTELLT
+// DATENLISTEN
 const grenzen={A1:[363.315,381.658],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 const listen={
     A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
@@ -78,10 +78,21 @@ const meistereien={
 let strassenDaten = null;
 let gpsWatchId = null;
 
-fetch('Abschnitt.json')
-    .then(res => res.json())
-    .then(data => { strassenDaten = data; document.getElementById("gps-info").innerText = "Bereit."; })
-    .catch(err => { document.getElementById("gps-info").innerText = "Fehler: Abschnitt.json fehlt!"; });
+// LADEPROZESS JSONS
+Promise.all([
+    fetch('Abschnitt.json').then(res => res.json()),
+    fetch('AbschnittBAB.json').then(res => res.json())
+]).then(([dataLand, dataBAB]) => {
+    // Merge Features beider JSONS
+    strassenDaten = {
+        type: "FeatureCollection",
+        features: [...dataLand.features, ...dataBAB.features]
+    };
+    document.getElementById("gps-info").innerText = "Bereit (Alle Netze geladen).";
+}).catch(err => {
+    document.getElementById("gps-info").innerText = "Fehler: Kartendaten konnten nicht geladen werden!";
+    console.error(err);
+});
 
 function starteGPS() {
     const btn = document.getElementById("gps-btn");
@@ -103,14 +114,11 @@ function berechneBKM(lat, lon) {
     if (!strassenDaten) return;
     try {
         const pt = turf.point([lon, lat]);
-        
-        // NEU: Wir suchen die NÄCHSTEN 10 Linien, nicht nur die eine
         const naheFeatures = turf.nearestPointOnLine(strassenDaten, pt, {units: 'kilometers'});
         
-        // Wir prüfen, ob im Umkreis von 250m eine Autobahn ist, auch wenn sie nicht die allernächste ist
         let gewaehltesFeature = naheFeatures;
         
-        // Suche gezielt nach Autobahn im Datensatz, falls das nächste Element eine Landstraße ist
+        // Priorisierungs-Logik
         const buffer = turf.buffer(pt, 0.25, {units: 'kilometers'});
         const kandidaten = strassenDaten.features.filter(f => {
             const bbox = turf.bbox(f);
@@ -119,8 +127,12 @@ function berechneBKM(lat, lon) {
         });
 
         const autobahnKandidat = kandidaten.find(f => String(f.properties.STRKL).trim() === "A");
+        const bundesKandidat = kandidaten.find(f => String(f.properties.STRKL).trim() === "B");
+
         if (autobahnKandidat) {
             gewaehltesFeature = turf.nearestPointOnLine(autobahnKandidat, pt, {units: 'kilometers'});
+        } else if (bundesKandidat) {
+            gewaehltesFeature = turf.nearestPointOnLine(bundesKandidat, pt, {units: 'kilometers'});
         }
 
         const props = gewaehltesFeature.properties;
@@ -135,7 +147,6 @@ function berechneBKM(lat, lon) {
         const meter = (props.location || 0) * 1000;
         const bkm = (statAnf + meter) / 1000;
 
-        // UI Update
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
         const select = document.getElementById("autobahn");
         const inDb = Array.from(select.options).some(o => o.value === strName);
@@ -146,7 +157,7 @@ function berechneBKM(lat, lon) {
             updateZuständigkeit();
             document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${strName} erkannt</span>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
         } else {
-            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${strName} außerhalb Datenbank</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${strName} außerhalb Fokus-Liste</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
             resetDetails();
         }
     } catch (e) { console.error(e); }
@@ -169,7 +180,8 @@ function zeigeListe() {
 
 function updateZuständigkeit() {
     let a = document.getElementById("autobahn").value;
-    let km = parseFloat(document.getElementById("km").value.replace(',','.'));
+    let val = document.getElementById("km").value.replace(',','.');
+    let km = parseFloat(val);
     if(isNaN(km) || !grenzen[a]) return;
     
     let gName = "-", mName = "-";
