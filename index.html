@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BKM Finder ALPHA - Fix</title>
+<title>BKM Finder ALPHA </title>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <style>
     body{font-family:Arial,sans-serif;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
@@ -125,17 +125,24 @@ function berechneBKM(lat, lon) {
     if (!datenGeladen) return;
     try {
         const pt = turf.point([lon, lat]);
+        
         let nearA = findeNaechsteLinie(datenA, pt);
         let nearB = findeNaechsteLinie(datenB, pt);
         let nearL = findeNaechsteLinie(datenL, pt);
 
         let gewaehltesFeature = null;
 
-        if (nearA && nearA.properties.dist <= 1.0) {
+        // --- EXTREM-PRIORITÄT FÜR FEHLERSUCHE ---
+        // Wenn eine Autobahn im Umkreis von 5km gefunden wird, nimm IMMER diese.
+        // Das schaltet die Landstraße fast komplett aus, um zu sehen, ob die A1 überhaupt da ist.
+        if (nearA && nearA.properties.dist <= 5.0) {
             gewaehltesFeature = nearA;
-        } else if (nearB && nearB.properties.dist <= 0.5) {
+            console.log("A1 erzwungen. Distanz:", nearA.properties.dist);
+        } 
+        else if (nearB && nearB.properties.dist <= 0.5) {
             gewaehltesFeature = nearB;
-        } else {
+        } 
+        else {
             let dA = nearA ? nearA.properties.dist : Infinity;
             let dB = nearB ? nearB.properties.dist : Infinity;
             let dL = nearL ? nearL.properties.dist : Infinity;
@@ -145,17 +152,24 @@ function berechneBKM(lat, lon) {
             else gewaehltesFeature = nearL;
         }
 
-        if(!gewaehltesFeature) return;
+        if(!gewaehltesFeature) {
+            document.getElementById("gps-info").innerText = "Keine Straße im 5km Umkreis gefunden.";
+            return;
+        }
 
         const fP = gewaehltesFeature.properties.originalFeature.properties;
-        const sKl = String(fP.STRKL || "").trim().toUpperCase();
-        const sNr = String(fP.STRNR || "").trim();
+        // Wir erzwingen Großschreibung und entfernen alle Leerzeichen
+        const sKl = String(fP.STRKL || "").replace(/\s+/g, '').toUpperCase();
+        const sNr = String(fP.STRNR || "").replace(/\s+/g, '');
         const sName = sKl + sNr;
+        
         const dist = Math.round(gewaehltesFeature.properties.dist * 1000);
         const bkm = ((parseFloat(fP.STATANF) || 0) + (gewaehltesFeature.properties.location * 1000)) / 1000;
 
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
         const select = document.getElementById("autobahn");
+        
+        // Prüfe ob der Name in unserer Liste ist (A1, A3 etc)
         const inDb = Array.from(select.options).some(o => o.value === sName);
 
         if (inDb) {
@@ -164,10 +178,13 @@ function berechneBKM(lat, lon) {
             updateZuständigkeit();
             document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${sName} erkannt</span>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
         } else {
-            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${sName} außerhalb Fokus-Liste</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+            // Hier landen wir, wenn er die L58 findet oder eine Autobahn, die nicht in der Liste steht
+            document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${sName} (Nicht in Fokus-Liste)</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
             resetDetails();
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error("Fehler in BKM Berechnung:", e); 
+    }
 }
 
 function zeigeListe() {
