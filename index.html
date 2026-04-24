@@ -54,7 +54,7 @@
 </div>
 
 <script>
-// DATENLISTEN (UNVERÄNDERT)
+// --- DEINE LISTEN BLEIBEN UNANGETASTET ---
 const grenzen={A1:[363.315,381.658],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 const listen={
     A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
@@ -76,9 +76,9 @@ const meistereien={
 };
 
 // Globale Variablen für getrennte Datennetze
-let datenA = { type: "FeatureCollection", features: [] };
-let datenB = { type: "FeatureCollection", features: [] };
-let datenL = { type: "FeatureCollection", features: [] };
+let datenA = [];
+let datenB = [];
+let datenL = [];
 let datenGeladen = false;
 let gpsWatchId = null;
 
@@ -89,12 +89,12 @@ Promise.all([
 ]).then(([dataLand, dataBAB]) => {
     let alleFeatures = [...dataLand.features, ...dataBAB.features];
     
-    // Sortiere direkt beim Laden nach Klasse
+    // Sortiere direkt beim Laden nach Klasse (Arrays statt FeatureCollections)
     alleFeatures.forEach(f => {
         let kl = String(f.properties?.STRKL || "").trim().toUpperCase();
-        if (kl === "A") datenA.features.push(f);
-        else if (kl === "B") datenB.features.push(f);
-        else datenL.features.push(f);
+        if (kl === "A") datenA.push(f);
+        else if (kl === "B") datenB.push(f);
+        else datenL.push(f);
     });
     
     datenGeladen = true;
@@ -103,6 +103,30 @@ Promise.all([
     document.getElementById("gps-info").innerText = "Fehler: Kartendaten konnten nicht geladen werden!";
     console.error(err);
 });
+
+// --- NEUE, EXAKTE SUCH-FUNKTION ---
+// Geht jede Linie einzeln durch, um Turf-Fehler zu vermeiden
+function findeNaechsteLinie(featuresArray, pt) {
+    if (!featuresArray || featuresArray.length === 0) return null;
+    let minDist = Infinity;
+    let bestPoint = null;
+
+    for (let i = 0; i < featuresArray.length; i++) {
+        let f = featuresArray[i];
+        try {
+            // Berechnet den Punkt exakt auf dieser EINEN Linie
+            let p = turf.nearestPointOnLine(f, pt, {units: 'kilometers'});
+            if (p.properties.dist < minDist) {
+                minDist = p.properties.dist;
+                bestPoint = p;
+                bestPoint.properties.originalFeature = f; // Wir hängen die Rohdaten dran
+            }
+        } catch (e) {
+            // Falls eine Linie fehlerhaft formatiert ist, überspringen
+        }
+    }
+    return bestPoint;
+}
 
 function starteGPS() {
     const btn = document.getElementById("gps-btn");
@@ -125,48 +149,50 @@ function berechneBKM(lat, lon) {
     try {
         const pt = turf.point([lon, lat]);
         
-        // Berechne die Distanz zu allen drei Netzen getrennt
-        let nearA = datenA.features.length ? turf.nearestPointOnLine(datenA, pt, {units: 'kilometers'}) : null;
-        let nearB = datenB.features.length ? turf.nearestPointOnLine(datenB, pt, {units: 'kilometers'}) : null;
-        let nearL = datenL.features.length ? turf.nearestPointOnLine(datenL, pt, {units: 'kilometers'}) : null;
+        // Suche jeweils die Nächste aus A, B und L mit der exakten Schleife
+        let nearA = findeNaechsteLinie(datenA, pt);
+        let nearB = findeNaechsteLinie(datenB, pt);
+        let nearL = findeNaechsteLinie(datenL, pt);
 
         let distA = nearA ? nearA.properties.dist : Infinity;
         let distB = nearB ? nearB.properties.dist : Infinity;
         let distL = nearL ? nearL.properties.dist : Infinity;
 
         let gewaehltesFeature = null;
-        let featProps = null;
 
-        // PRIORITÄTS-LOGIK (Direkter Distanzvergleich statt Box-Puffer)
-        if (distA <= 0.5) { 
-            // Autobahn gewinnt immer, wenn unter 500m entfernt
+        // PRIORITÄTS-LOGIK
+        if (distA <= 0.3) { 
+            // Autobahn gewinnt, wenn unter 300m entfernt
             gewaehltesFeature = nearA;
-            featProps = datenA.features[gewaehltesFeature.properties.index].properties;
         } 
         else if (distB <= 0.25) { 
-            // Danach Bundesstraße, wenn unter 250m entfernt
+            // Bundesstraße gewinnt, wenn unter 250m entfernt
             gewaehltesFeature = nearB;
-            featProps = datenB.features[gewaehltesFeature.properties.index].properties;
         } 
         else { 
-            // Fallback auf die absolut nächste Straße (meist L)
+            // Fallback: Was auch immer wirklich am nächsten ist
             let minDist = Math.min(distA, distB, distL);
-            if (minDist === distA) { gewaehltesFeature = nearA; featProps = datenA.features[gewaehltesFeature.properties.index].properties; }
-            else if (minDist === distB) { gewaehltesFeature = nearB; featProps = datenB.features[gewaehltesFeature.properties.index].properties; }
-            else if (minDist === distL) { gewaehltesFeature = nearL; featProps = datenL.features[gewaehltesFeature.properties.index].properties; }
+            if (minDist === distA) gewaehltesFeature = nearA;
+            else if (minDist === distB) gewaehltesFeature = nearB;
+            else if (minDist === distL) gewaehltesFeature = nearL;
         }
 
         if(!gewaehltesFeature) return;
 
+        // Eigenschaften extrahieren
+        const featProps = gewaehltesFeature.properties.originalFeature.properties;
+        
         const strKl = String(featProps.STRKL || "").trim();
         const strNr = String(featProps.STRNR || "").trim();
         const strName = strKl + strNr;
         const dist = Math.round(gewaehltesFeature.properties.dist * 1000);
 
+        // Berechnung Kilometer
         const statAnf = parseFloat(featProps.STATANF) || 0;
         const meter = (gewaehltesFeature.properties.location || 0) * 1000;
         const bkm = (statAnf + meter) / 1000;
 
+        // Anzeige updaten
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
         const select = document.getElementById("autobahn");
         const inDb = Array.from(select.options).some(o => o.value === strName);
