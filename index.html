@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autobahn Tool - Profi Version</title>
+<title>Autobahn Tool</title>
 <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 <style>
 body{font-family:Arial;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
@@ -24,7 +24,7 @@ th{background:#eee}
 <body>
 
 <div class="card">
-<h2>Zuständigkeitsfinder</h2>
+<h2>Zuständigkeits und BKM Finder</h2>
 <select id="autobahn" onchange="zeigeListe(); updateRichtung();">
 <option value="A1">A1</option>
 <option value="A3">A3</option>
@@ -34,6 +34,7 @@ th{background:#eee}
 <option value="A59">A59</option>
 <option value="A535">A535</option>
 <option value="A542">A542</option>
+
 </select>
 
 <input id="km" placeholder="Kilometer eingeben">
@@ -70,7 +71,7 @@ th{background:#eee}
 </div>
 
 <script>
-// --- DATEN ---
+//DATEN 
 const grenzen={A1:[363.315,381.646],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 
 const listen={
