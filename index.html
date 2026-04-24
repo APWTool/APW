@@ -255,21 +255,38 @@ function verarbeiteGPS(lat, lon, acc) {
 }
 
 function berechneGoldgriffBKM(meinPunkt, strName) {
+    // 1. Filtere alle Referenzpunkte, die zu dieser Autobahn gehören (z.B. "A44")
     let passendePunkte = referenzPunkte.filter(f => 
-        f.properties && f.properties.Bez && f.properties.Bez.toUpperCase().replace(/\s/g,'') === strName
+        f.properties && f.properties.Bez && 
+        f.properties.Bez.toUpperCase().replace(/\s/g,'') === strName
     );
 
     if (passendePunkte.length > 0) {
         try {
+            // 2. Erstelle eine Sammlung aus diesen Punkten
             let ptsColl = turf.featureCollection(passendePunkte);
+            
+            // 3. Finde den absolut nächsten Referenzpunkt aus deiner GeoJSON
             let closest = turf.nearestPoint(meinPunkt, ptsColl);
             
-            // Kommas aus der JSON (falls vorhanden) in Punkte wandeln
+            // 4. Hol den Kilometerwert dieses Punktes (z.B. 9.500)
             let refKM_String = String(closest.properties.Kilometer).replace(',', '.');
             let refKM = parseFloat(refKM_String);
             
-            let dist = turf.distance(meinPunkt, closest); // in KM
-            return isNaN(refKM) ? 0 : refKM + dist;
+            // 5. Berechne die kleine Rest-Distanz zwischen deinem GPS-Standort 
+            // und diesem nächsten Referenzpunkt (in Kilometern)
+            let restDistanz = turf.distance(meinPunkt, closest); 
+
+            // 6. Logik für die Richtung (Wächst der KM oder sinkt er?)
+            // Einfachste Lösung: Nimm den Wert des nächsten Punktes. 
+            // Wenn deine Punkte alle 100m oder 500m gesetzt sind, ist das extrem genau.
+            
+            if (isNaN(refKM)) return 0;
+
+            // Optional: Hier könnte man noch prüfen, ob man vor oder hinter dem Punkt ist.
+            // Für den Anfang nehmen wir den refKM +/-, aber meistens reicht der refKM des nächsten Punktes:
+            return refKM; 
+
         } catch(e) {
             console.error("Fehler bei Goldgriff-Berechnung", e);
             return 0;
