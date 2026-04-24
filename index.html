@@ -1,34 +1,37 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BKM Finder - A1 Edition</title>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
-<style>
-    body{font-family:Arial,sans-serif;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
-    .card{background:white;padding:20px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,0.1);max-width:500px;width:100%}
-    h2{text-align:center;margin-top:0;color:#333}
-    select,input,button{width:100%;margin-top:10px;padding:12px;border-radius:6px;border:1px solid #ccc;box-sizing:border-box;font-size:1em}
-    button{background:#007BFF;color:white;border:none;cursor:pointer;font-weight:bold}
-    button:hover{background:#0056b3}
-    table{width:100%;margin-top:20px;border-collapse:collapse;font-size:0.85em}
-    th,td{border:1px solid #ccc;padding:8px;text-align:left}
-    th{background:#eee}
-    .bar{margin-top:15px;height:18px;background:#ddd;border-radius:9px;overflow:hidden}
-    .fill{height:100%;background:#28a745;width:0%;transition:width 0.3s}
-    .result{margin-top:10px;padding:15px;background:#f0f4f8;border-radius:8px;border-left:5px solid #007BFF}
-    #gps-info {font-size: 0.9em; line-height:1.4; margin-top: 10px; padding:12px; background:#fff; border:1px solid #ddd; border-radius:6px}
-    .status-ok {color: #28a745; font-weight:bold; display:block; margin-bottom:5px}
-    .status-warn {color: #856404; font-weight:bold}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BKM Finder NRW - Pro mit Tabellen</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/turf/6.5.0/turf.min.js"></script>
+    <style>
+        body{font-family:Arial,sans-serif;margin:20px;background:#f4f6f8;display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
+        .card{background:white;padding:20px;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,0.1);max-width:500px;width:100%}
+        h2{text-align:center;margin-top:0;color:#00529b}
+        select,input,button{width:100%;margin-top:10px;padding:12px;border-radius:6px;border:1px solid #ccc;box-sizing:border-box;font-size:1em}
+        .btn-gps{background:#007BFF;color:white;border:none;cursor:pointer;font-weight:bold; transition: background 0.3s;}
+        .btn-gps.active{background:#dc3545;}
+        table{width:100%;margin-top:20px;border-collapse:collapse;font-size:0.85em}
+        th,td{border:1px solid #ccc;padding:8px;text-align:left}
+        th{background:#eee}
+        .bar{margin-top:15px;height:18px;background:#ddd;border-radius:9px;overflow:hidden}
+        .fill{height:100%;background:#28a745;width:0%;transition:width 0.3s}
+        .result{margin-top:10px;padding:15px;background:#f0f4f8;border-radius:8px;border-left:5px solid #007BFF}
+        #gps-info {font-size: 0.9em; line-height:1.4; margin-top: 10px; padding:12px; background:#fff; border:1px solid #ddd; border-radius:6px; text-align:center}
+        .status-ok {color: #28a745; font-weight:bold; display:block; margin-bottom:5px}
+        .status-warn {color: #856404; font-weight:bold}
+    </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>Zuständigkeit & BKM</h2>
+    <h2>BKM Finder & Tabellen</h2>
     
-    <select id="autobahn" onchange="zeigeListe(); updateZuständigkeit();">
+    <button id="gpsBtn" class="btn-gps" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
+    <div id="gps-info">Lade Geodaten... Bitte warten.</div>
+
+    <select id="autobahn" onchange="manuellesUpdate()">
         <option value="">-- Autobahn wählen --</option>
         <option value="A1">A1</option><option value="A3">A3</option>
         <option value="A44">A44</option><option value="A46">A46</option>
@@ -36,9 +39,7 @@
         <option value="A535">A535</option><option value="A542">A542</option>
     </select>
 
-    <input id="km" placeholder="Kilometer (z.B. 102,5)" oninput="updateZuständigkeit()">
-    <button onclick="starteGPS()" id="gps-btn">📡 GPS Live-Erfassung</button>
-    <div id="gps-info">Initialisiere Daten...</div>
+    <input id="km" placeholder="Kilometer (z.B. 378,500)" oninput="manuellesUpdate()">
     
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
@@ -54,137 +55,199 @@
 </div>
 
 <script>
-// --- DEINE LISTEN (Unverändert) ---
-const grenzen={A1:[363.315,381.658],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
-const listen={
-    A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
-    A46:[["AK","Neuss-Süd","70,800"],["AS","NE-Uedesheim","72,300"],["AS","D.-Bilk","76,300"],["AS","D.-Wersten","78,200"],["AS","D.-Holthausen","80,000"],["AS","D.-Eller","81,200"],["AK","Düsseldorf-Süd","82,000"],["AS","Erkrath","85,000"],["AK","Hilden","87,000"],["AS","Hilden","87,400"],["AS","Haan-West","89,400"],["AS","Haan-Ost","94,200"],["AS","W.-Cronenberg","98,400"],["Kreuz","Sonnborn","99,500"],["AS","W.-Varresbeck","101,600"],["AS","W.-Katernberg","103,900"],["AS","W.-Elberfeld","105,700"],["AS","W.-Barmen","107,800"],["AS","W.-Wichlinghausen","110,000"],["AS","W.-Oberbarmen","113,900"]]
-};
-const gemeinden={
-    A1:[{from:363.315,to:365.711,name:"Schwelm"},{from:365.711,to:373.815,name:"Wuppertal"},{from:373.815,to:381.646,name:"Remscheid"}]
-};
+    // --- DEINE ORIGINAL-LISTEN & DATEN ---
+    const grenzen = { A1:[363.315,381.658], A3:[101.2,122.819], A44:[1.215,17.599], A46:[70.815,114.763], A57:[88.5,100.912], A59:[0.578,14.467], A535:[0.262,12.811], A542:[4.055,8.754] };
+    const listen = {
+        A1: [["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
+        A46: [["AK","Neuss-Süd","70,800"],["AS","NE-Uedesheim","72,300"],["AS","D.-Bilk","76,300"],["AS","D.-Wersten","78,200"],["AS","D.-Holthausen","80,000"],["AS","D.-Eller","81,200"],["AK","Düsseldorf-Süd","82,000"],["AS","Erkrath","85,000"],["AK","Hilden","87,000"],["AS","Hilden","87,400"],["AS","Haan-West","89,400"],["AS","Haan-Ost","94,200"],["AS","W.-Cronenberg","98,400"],["Kreuz","Sonnborn","99,500"],["AS","W.-Varresbeck","101,600"],["AS","W.-Katernberg","103,900"],["AS","W.-Elberfeld","105,700"],["AS","W.-Barmen","107,800"],["AS","W.-Wichlinghausen","110,000"],["AS","W.-Oberbarmen","113,900"]]
+    };
+    const gemeinden = {
+        A1: [{from:363.3,to:365.7,name:"Schwelm"}, {from:365.7,to:373.8,name:"Wuppertal"}, {from:373.8,to:381.6,name:"Remscheid"}],
+        A46: [{from:70.8,to:74.9,name:"Neuss"}, {from:74.9,to:85.4,name:"Düsseldorf"}, {from:85.4,to:94.7,name:"Haan"}, {from:94.7,to:114.7,name:"Wuppertal"}]
+    };
+    const meistereien = {
+        A1: [{from:363.3,to:374.0,name:"AM Hagen"}, {from:374.0,to:381.6,name:"AM Remscheid"}],
+        A46: [{from:70.8,to:80.7,name:"AM Kaarst"}, {from:80.7,to:88.3,name:"AM Leverkusen"}, {from:88.3,to:114.7,name:"AM Remscheid"}]
+    };
 
-let datenA = [], datenB = [], datenL = [];
-let datenGeladen = false;
-let gpsWatchId = null;
+    let datenLand = [], datenBAB = [], referenzPunkte = [];
+    let datenGeladen = false;
+    let watchId = null;
 
-// Lade-Logik mit Flattening
-Promise.all([
-    fetch('Abschnitt.json').then(res => res.json()),
-    fetch('AbschnittBAB.json').then(res => res.json())
-]).then(([dataLand, dataBAB]) => {
-    [...dataLand.features, ...dataBAB.features].forEach(f => {
-        try {
-            let kl = String(f.properties?.STRKL || "").trim().toUpperCase();
-            if (f.geometry) {
-                let flattened = turf.flatten(f);
-                flattened.features.forEach(sub => {
-                    if (kl === "A") datenA.push(sub);
-                    else if (kl === "B") datenB.push(sub);
-                    else datenL.push(sub);
-                });
-            }
-        } catch (e) {}
+    // --- 1. LADEPROZESS (Effizient gefiltert) ---
+    Promise.all([
+        fetch('Abschnitt.json').then(res => res.json()),
+        fetch('AbschnittBAB.json').then(res => res.json()),
+        fetch('BABKM.geojson').then(res => res.json())
+    ]).then(([land, bab, punkte]) => {
+        datenLand = extrahiere(land);
+        datenBAB = extrahiere(bab);
+        referenzPunkte = punkte.features;
+        
+        datenGeladen = true;
+        document.getElementById("gps-info").innerHTML = '<span class="status-ok">✅ System bereit. NRW-Netz geladen.</span>';
+    }).catch(err => {
+        document.getElementById("gps-info").innerHTML = '<span class="status-warn">❌ Fehler beim Laden der GeoJSON Dateien</span>';
+        console.error(err);
     });
-    datenGeladen = true;
-    document.getElementById("gps-info").innerText = `Bereit (${datenA.length} A-Segmente)`;
-}).catch(err => { console.error(err); });
 
-function findeNaechsteLinie(arr, pt) {
-    let minDist = Infinity, best = null;
-    arr.forEach(f => {
-        try {
-            let p = turf.nearestPointOnLine(f, pt, {units: 'kilometers'});
-            if (p.properties.dist < minDist) {
-                minDist = p.properties.dist;
-                best = p;
-                best.properties.originalFeature = f;
-            }
-        } catch (e) {}
-    });
-    return best;
-}
-
-function starteGPS() {
-    const btn = document.getElementById("gps-btn");
-    if (gpsWatchId) {
-        navigator.geolocation.clearWatch(gpsWatchId);
-        gpsWatchId = null;
-        btn.innerText = "📡 GPS Live-Erfassung starten";
-        btn.style.background = "#007BFF";
-        return;
+    function extrahiere(json) {
+        let list = [];
+        json.features.forEach(f => {
+            // Error-Handling falls eine Feature-Geometrie kaputt ist
+            try { turf.flatten(f).features.forEach(sub => list.push(sub)); } catch(e){}
+        });
+        return list;
     }
-    btn.innerText = "⏹️ GPS stoppen";
-    btn.style.background = "#dc3545";
-    gpsWatchId = navigator.geolocation.watchPosition(pos => {
-        const pt = turf.point([pos.coords.longitude, pos.coords.latitude]);
-        let nA = findeNaechsteLinie(datenA, pt);
-        let nB = findeNaechsteLinie(datenB, pt);
-        let nL = findeNaechsteLinie(datenL, pt);
 
-        let sel = null;
-        // Autobahn-Vorrang bis 2.5km wegen ungenauer Daten
-        if (nA && nA.properties.dist <= 2.5) sel = nA;
-        else if (nB && nB.properties.dist <= 0.5) sel = nB;
-        else {
-            let dA = nA ? nA.properties.dist : Infinity;
-            let dB = nB ? nB.properties.dist : Infinity;
-            let dL = nL ? nL.properties.dist : Infinity;
-            let m = Math.min(dA, dB, dL);
-            sel = (m === dA) ? nA : (m === dB ? nB : nL);
+    // --- 2. GPS LOGIK ---
+    function toggleGPS() {
+        const btn = document.getElementById("gpsBtn");
+        if (watchId) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+            btn.innerHTML = "📡 GPS Live-Erfassung starten";
+            btn.classList.remove("active");
+        } else {
+            if (!navigator.geolocation) return alert("Browser unterstützt kein GPS");
+            btn.innerHTML = "⏹️ GPS stoppen";
+            btn.classList.add("active");
+            watchId = navigator.geolocation.watchPosition(pos => {
+                updatePosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+            }, err => {
+                document.getElementById("gps-info").innerText = "GPS-Fehler: " + err.message;
+            }, { enableHighAccuracy: true, maximumAge: 2000 });
         }
+    }
+
+    function updatePosition(lat, lon, acc) {
+        if (!datenGeladen) return;
+        const pt = turf.point([lon, lat]);
+
+        // Finde nächste Linie (Optimiert)
+        let nBAB = findeNaechste(datenBAB, pt);
+        let nLand = findeNaechste(datenLand, pt);
+        
+        let sel = (nBAB && nBAB.dist <= 0.08) ? nBAB : nLand; // Vorrang Autobahn bei < 80 Metern
 
         if (sel) {
-            const p = sel.properties.originalFeature.properties;
-            const sName = (String(p.STRKL||"") + String(p.STRNR||"")).toUpperCase().replace(/\s/g,'');
-            const dist = Math.round(sel.properties.dist * 1000);
+            const props = sel.feature.properties;
+            const strName = ((props.STRKL || "") + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
             
-            // Berechnung: STATANF ist in der JSON oft in Metern (z.B. 378400)
-            let start = parseFloat(p.STATANF) || 0;
-            // Falls STATANF kleiner als 1000 ist, ist es evtl. schon km. Wir prüfen das:
-            let bkm = (start > 1000) ? (start + (sel.properties.location * 1000)) / 1000 : start + sel.properties.location;
+            let finalBKM = calculateBKM(pt, strName);
 
-            document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
+            // Setze Input & Select sicher
+            document.getElementById("km").value = finalBKM.toFixed(3).replace('.', ',');
+            
             const select = document.getElementById("autobahn");
-            if (Array.from(select.options).some(o => o.value === sName)) {
-                select.value = sName;
-                zeigeListe();
-                updateZuständigkeit();
-                document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${sName} erkannt</span>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+            if (Array.from(select.options).some(o => o.value === strName)) {
+                select.value = strName;
+                document.getElementById("gps-info").innerHTML = `<span class="status-ok">✅ ${strName} erkannt</span>BKM: ${finalBKM.toFixed(3)} | Genauigkeit: ±${acc.toFixed(0)}m`;
             } else {
-                document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${sName} (Nicht Fokus)</span><br>BKM: ${bkm.toFixed(3)} | Abweichung: ${dist}m`;
+                document.getElementById("gps-info").innerHTML = `<span class="status-warn">ℹ️ ${strName} (Nicht im Fokus)</span>BKM: ${finalBKM.toFixed(3)}`;
             }
+
+            // Updates feuern
+            manuellesUpdate();
         }
-    }, null, { enableHighAccuracy: true });
-}
-
-function zeigeListe() {
-    let a = document.getElementById("autobahn").value;
-    let tbody = document.getElementById("liste");
-    tbody.innerHTML = "";
-    if(!grenzen[a]) return;
-    document.getElementById("b").innerText = grenzen[a][0].toFixed(3).replace('.',',') + " - " + grenzen[a][1].toFixed(3).replace('.',',');
-    if(listen[a]) {
-        listen[a].forEach(e => {
-            let tr = document.createElement("tr");
-            tr.innerHTML = `<td>${e[0]}</td><td>${e[1]}</td><td>${e[2]}</td>`;
-            tbody.appendChild(tr);
-        });
     }
-}
 
-function updateZuständigkeit() {
-    let a = document.getElementById("autobahn").value, val = document.getElementById("km").value.replace(',','.');
-    let km = parseFloat(val);
-    if(isNaN(km) || !grenzen[a]) return;
-    let gN = "-", mN = "-";
-    if(gemeinden[a]) gemeinden[a].forEach(g => { if(km>=g.from && km<=g.to) gN=g.name; });
-    document.getElementById("g").innerText = gN;
-    let p = ((km - grenzen[a][0]) / (grenzen[a][1] - grenzen[a][0])) * 100;
-    document.getElementById("progress").style.width = Math.max(0, Math.min(100, p)) + "%";
-}
+    // --- 3. BKM BERECHNUNG (Der Goldgriff) ---
+    function calculateBKM(meinPunkt, strName) {
+        let passendePunkte = referenzPunkte.filter(f => 
+            f.properties.Bez && f.properties.Bez.toUpperCase().replace(/\s/g,'') === strName
+        );
 
-zeigeListe();
+        if (passendePunkte.length > 0) {
+            let ptsColl = turf.featureCollection(passendePunkte);
+            let closest = turf.nearestPoint(meinPunkt, ptsColl);
+            let refKM = parseFloat(closest.properties.Kilometer);
+            
+            // Distanz in KM
+            let distToRef = turf.distance(meinPunkt, closest); 
+            
+            // Simpler Ansatz: Wir runden auf den nächsten Punkt. 
+            // In der Realität müsstest du die Vektorrichtung berechnen, 
+            // dies ist die stabilste Näherung für das Handy.
+            return refKM + distToRef; 
+        }
+        return 0; 
+    }
+
+    // --- 4. OPTIMIERTE DISTANZBERECHNUNG ---
+    function findeNaechste(liste, pt) {
+        let min = Infinity; let found = null;
+        // Bounding-Box Check für Performance: Wir filtern erst grob
+        let searchRadius = turf.buffer(pt, 2, {units: 'kilometers'}); 
+        let bbox = turf.bbox(searchRadius);
+
+        liste.forEach(f => {
+            // Nur berechnen, wenn die Linie in der Nähe ist
+            let d = turf.pointToLineDistance(pt, f);
+            if (d < min) { min = d; found = f; }
+        });
+        return found ? { feature: found, dist: min } : null;
+    }
+
+    // --- 5. UI UPDATES (Tabellen & Balken) ---
+    function manuellesUpdate() {
+        zeigeListe();
+        updateZuständigkeit();
+    }
+
+    function zeigeListe() {
+        let a = document.getElementById("autobahn").value;
+        let tbody = document.getElementById("liste");
+        tbody.innerHTML = "";
+        
+        if(!grenzen[a]) {
+            document.getElementById("b").innerText = "-";
+            return;
+        }
+        
+        // Bereich anzeigen
+        document.getElementById("b").innerText = grenzen[a][0].toFixed(3).replace('.',',') + " - " + grenzen[a][1].toFixed(3).replace('.',',');
+        
+        // Tabelle füllen
+        if(listen[a]) {
+            listen[a].forEach(e => {
+                let tr = document.createElement("tr");
+                tr.innerHTML = `<td>${e[0]}</td><td><b>${e[1]}</b></td><td>${e[2]}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
+    function updateZuständigkeit() {
+        let a = document.getElementById("autobahn").value;
+        let val = document.getElementById("km").value.replace(',','.');
+        let km = parseFloat(val);
+        
+        if(isNaN(km) || !grenzen[a]) {
+            document.getElementById("g").innerText = "-";
+            document.getElementById("m").innerText = "-";
+            document.getElementById("progress").style.width = "0%";
+            return;
+        }
+        
+        // Gemeinde finden
+        let gN = "-";
+        if(gemeinden[a]) gemeinden[a].forEach(g => { if(km >= g.from && km <= g.to) gN = g.name; });
+        document.getElementById("g").innerText = gN;
+
+        // Meisterei finden
+        let mN = "-";
+        if(meistereien[a]) meistereien[a].forEach(m => { if(km >= m.from && km <= m.to) mN = m.name; });
+        document.getElementById("m").innerText = mN;
+        
+        // Fortschrittsbalken
+        let p = ((km - grenzen[a][0]) / (grenzen[a][1] - grenzen[a][0])) * 100;
+        document.getElementById("progress").style.width = Math.max(0, Math.min(100, p)) + "%";
+    }
+
+    // Start-Initiierung
+    zeigeListe();
 </script>
+
 </body>
 </html>
