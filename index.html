@@ -255,45 +255,55 @@ function verarbeiteGPS(lat, lon, acc) {
 }
 
 function berechneGoldgriffBKM(meinPunkt, strName) {
-    // 1. Filtere alle Referenzpunkte, die zu dieser Autobahn gehören (z.B. "A44")
-    let passendePunkte = referenzPunkte.filter(f => 
-        f.properties && f.properties.Bez && 
-        f.properties.Bez.toUpperCase().replace(/\s/g,'') === strName
-    );
+    // 1. Suche alle Punkte für diese Straße
+    // Wir machen die Suche robuster: Wir entfernen Leerzeichen und "A"
+    let suchName = strName.replace(/\s/g,'').replace('A',''); 
+
+    let passendePunkte = referenzPunkte.filter(f => {
+        if (!f.properties || !f.properties.Bez) return false;
+        let punktBez = String(f.properties.Bez).toUpperCase().replace(/\s/g,'').replace('A','');
+        return punktBez === suchName;
+    });
 
     if (passendePunkte.length > 0) {
         try {
-            // 2. Erstelle eine Sammlung aus diesen Punkten
-            let ptsColl = turf.featureCollection(passendePunkte);
-            
-            // 3. Finde den absolut nächsten Referenzpunkt aus deiner GeoJSON
-            let closest = turf.nearestPoint(meinPunkt, ptsColl);
-            
-            // 4. Hol den Kilometerwert dieses Punktes (z.B. 9.500)
-            let refKM_String = String(closest.properties.Kilometer).replace(',', '.');
-            let refKM = parseFloat(refKM_String);
-            
-            // 5. Berechne die kleine Rest-Distanz zwischen deinem GPS-Standort 
-            // und diesem nächsten Referenzpunkt (in Kilometern)
-            let restDistanz = turf.distance(meinPunkt, closest); 
+            // 2. Finde den nächsten Punkt
+            let minDistance = Infinity;
+            let closestPoint = null;
 
-            // 6. Logik für die Richtung (Wächst der KM oder sinkt er?)
-            // Einfachste Lösung: Nimm den Wert des nächsten Punktes. 
-            // Wenn deine Punkte alle 100m oder 500m gesetzt sind, ist das extrem genau.
-            
-            if (isNaN(refKM)) return 0;
+            passendePunkte.forEach(p => {
+                let d = turf.distance(meinPunkt, p);
+                if (d < minDistance) {
+                    minDistance = d;
+                    closestPoint = p;
+                }
+            });
 
-            // Optional: Hier könnte man noch prüfen, ob man vor oder hinter dem Punkt ist.
-            // Für den Anfang nehmen wir den refKM +/-, aber meistens reicht der refKM des nächsten Punktes:
-            return refKM; 
-
+            if (closestPoint) {
+                // 3. Wert auslesen (Wir prüfen "Kilometer", "KM", "km" - sicher ist sicher)
+                let props = closestPoint.properties;
+                let rawKM = props.Kilometer || props.KM || props.km || 0;
+                
+                // Komma zu Punkt wandeln
+                let refKM = parseFloat(String(rawKM).replace(',', '.'));
+                
+                // 4. Distanz-Korrektur (Stehe ich davor oder dahinter?)
+                // Da wir nicht wissen, in welche Richtung die Autobahn zählt,
+                // nehmen wir für den Test erst mal nur den Punkt-Wert.
+                // Das muss bei 51.3530 / 7.0390 jetzt ~9.5 ergeben!
+                
+                console.log("Punkt gefunden:", props.Bez, "KM:", refKM, "Abstand:", minDistance);
+                
+                return refKM; 
+            }
         } catch(e) {
-            console.error("Fehler bei Goldgriff-Berechnung", e);
-            return 0;
+            console.error("Fehler bei Berechnung:", e);
         }
     }
     return 0; 
 }
+
+    
 
 function findeNaechsteLinie(liste, pt) {
     let min = Infinity; let found = null;
