@@ -49,17 +49,16 @@ function berechneBKM(lat, lon) {
 
     try {
         const aktuellerPunkt = turf.point([lon, lat]);
-        
-        // Den nächsten Punkt auf der Linie finden
         const snapped = turf.nearestPointOnLine(strassenDaten, aktuellerPunkt);
         
-        // ACHTUNG: Die Attribute liegen bei Turf oft in snapped.properties
-        // Wenn das leer ist, liegen sie im ursprünglichen Feature, das Turf gefunden hat.
-        // Wir holen uns die Daten daher sicherheitshalber so:
-        const p = snapped.properties;
+        // SICHERHEITS-CHECK: 
+        // Turf legt die Attribute manchmal in snapped.properties ab, 
+        // aber die Original-Daten liegen IMMER im Quell-Feature.
+        const index = snapped.properties.index;
+        const originalFeature = strassenDaten.features[index];
+        const p = originalFeature.properties; // Hier liegen STRKL, STRNR definitiv!
 
-        // Falls p leer aussieht, liegt es daran, dass wir auf die NWSIB-Werte zugreifen müssen
-        // Wir nutzen deine exakten Spaltennamen aus der JSON:
+        // Werte auslesen
         const strKl  = p.STRKL || "";
         const strNr  = p.STRNR || "";
         const absNr  = p.ABSNR || "Unbekannt";
@@ -67,28 +66,30 @@ function berechneBKM(lat, lon) {
         const statAnf = parseFloat(p.STATANF) || 0;
 
         // BKM Berechnung
-        // Da deine JSON 'LAENGE: 27' (Meter) zeigt, ist p.location auch in Metern.
-        const meterAufAbschnitt = p.location; 
+        // snapped.properties.location ist die Distanz vom Anfang der Linie zum Snap-Punkt
+        const meterAufAbschnitt = snapped.properties.location; 
         const gesamtMeter = statAnf + meterAufAbschnitt;
         const aktuellerBKM = (gesamtMeter / 1000).toFixed(3);
-
-        // Debugging in der Konsole
-        console.log(`Gefunden: ${strKl}${strNr}, KM: ${aktuellerBKM}`);
 
         // In HTML anzeigen
         document.getElementById('ausgabe').innerHTML = `
             <div style="border-left: 5px solid #0056b3; padding-left: 15px; text-align: left;">
-                <strong>Straße:</strong> ${strKl}${strNr} <br>
-                <strong>Abschnitt:</strong> ${absNr} (${strBez})<br>
-                <hr>
+                <strong style="font-size: 1.2em;">Straße: ${strKl}${strNr}</strong><br>
+                <span>Abschnitt: ${absNr} (${strBez})</span>
+                <hr style="border: 0; border-top: 1px solid #ccc;">
                 <span style="font-size: 0.9em; color: #666;">Aktuelle Position:</span><br>
-                <span style="font-size: 2em; font-weight: bold; color: #0056b3;">
+                <span style="font-size: 2.2em; font-weight: bold; color: #0056b3;">
                     KM ${aktuellerBKM.replace('.', ',')}
                 </span>
             </div>
         `;
+
+        // Debugging für dich:
+        console.log("Erkannt:", strKl, strNr, "an Position", aktuellerBKM);
+        
     } catch (e) {
-        console.error("Fehler bei der Berechnung:", e);
+        console.error("Fehler:", e);
+        document.getElementById('ausgabe').innerHTML = "Berechnungsfehler: " + e.message;
     }
 }
     </script>
