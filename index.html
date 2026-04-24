@@ -54,7 +54,7 @@
 </div>
 
 <script>
-// DATENLISTEN
+// DATENLISTEN (UNVERÄNDERT)
 const grenzen={A1:[363.315,381.658],A3:[101.2,122.819],A44:[1.215,17.599],A46:[70.815,114.763],A57:[88.5,100.912],A59:[0.578,14.467],A535:[0.262,12.811],A542:[4.055,8.754]};
 const listen={
     A1:[["AS","W.-Langerfeld","365,700"],["PP","Kucksiepen","367,900"],["PP","Ehrenberg","368,200"],["AS","W.-Ronsdorf","373,300"],["AS","RS-Lennep","376,800"],["AS","Remscheid","379,100"]],
@@ -75,20 +75,30 @@ const meistereien={
     A46:[{from:70.815,to:80.770,name:"AM Kaarst"},{from:80.770,to:88.340,name:"AM Leverkusen"},{from:88.340,to:114.763,name:"AM Remscheid"}]
 };
 
-let strassenDaten = null;
+// Globale Variablen für getrennte Datennetze
+let datenA = { type: "FeatureCollection", features: [] };
+let datenB = { type: "FeatureCollection", features: [] };
+let datenL = { type: "FeatureCollection", features: [] };
+let datenGeladen = false;
 let gpsWatchId = null;
 
-// LADEPROZESS JSONS
+// LADEPROZESS JSONS & DIREKTE TRENNUNG
 Promise.all([
     fetch('Abschnitt.json').then(res => res.json()),
     fetch('AbschnittBAB.json').then(res => res.json())
 ]).then(([dataLand, dataBAB]) => {
-    // Merge Features beider JSONS
-    strassenDaten = {
-        type: "FeatureCollection",
-        features: [...dataLand.features, ...dataBAB.features]
-    };
-    document.getElementById("gps-info").innerText = "Bereit (Alle Netze geladen).";
+    let alleFeatures = [...dataLand.features, ...dataBAB.features];
+    
+    // Sortiere direkt beim Laden nach Klasse
+    alleFeatures.forEach(f => {
+        let kl = String(f.properties?.STRKL || "").trim().toUpperCase();
+        if (kl === "A") datenA.features.push(f);
+        else if (kl === "B") datenB.features.push(f);
+        else datenL.features.push(f);
+    });
+    
+    datenGeladen = true;
+    document.getElementById("gps-info").innerText = "Bereit (Alle Netze geladen & sortiert).";
 }).catch(err => {
     document.getElementById("gps-info").innerText = "Fehler: Kartendaten konnten nicht geladen werden!";
     console.error(err);
@@ -111,40 +121,50 @@ function starteGPS() {
 }
 
 function berechneBKM(lat, lon) {
-    if (!strassenDaten) return;
+    if (!datenGeladen) return;
     try {
         const pt = turf.point([lon, lat]);
-        const naheFeatures = turf.nearestPointOnLine(strassenDaten, pt, {units: 'kilometers'});
         
-        let gewaehltesFeature = naheFeatures;
-        
-        // Priorisierungs-Logik
-        const buffer = turf.buffer(pt, 0.25, {units: 'kilometers'});
-        const kandidaten = strassenDaten.features.filter(f => {
-            const bbox = turf.bbox(f);
-            const poly = turf.bboxPolygon(bbox);
-            return turf.booleanIntersects(poly, buffer);
-        });
+        // Berechne die Distanz zu allen drei Netzen getrennt
+        let nearA = datenA.features.length ? turf.nearestPointOnLine(datenA, pt, {units: 'kilometers'}) : null;
+        let nearB = datenB.features.length ? turf.nearestPointOnLine(datenB, pt, {units: 'kilometers'}) : null;
+        let nearL = datenL.features.length ? turf.nearestPointOnLine(datenL, pt, {units: 'kilometers'}) : null;
 
-        const autobahnKandidat = kandidaten.find(f => String(f.properties.STRKL).trim() === "A");
-        const bundesKandidat = kandidaten.find(f => String(f.properties.STRKL).trim() === "B");
+        let distA = nearA ? nearA.properties.dist : Infinity;
+        let distB = nearB ? nearB.properties.dist : Infinity;
+        let distL = nearL ? nearL.properties.dist : Infinity;
 
-        if (autobahnKandidat) {
-            gewaehltesFeature = turf.nearestPointOnLine(autobahnKandidat, pt, {units: 'kilometers'});
-        } else if (bundesKandidat) {
-            gewaehltesFeature = turf.nearestPointOnLine(bundesKandidat, pt, {units: 'kilometers'});
+        let gewaehltesFeature = null;
+        let featProps = null;
+
+        // PRIORITÄTS-LOGIK (Direkter Distanzvergleich statt Box-Puffer)
+        if (distA <= 0.5) { 
+            // Autobahn gewinnt immer, wenn unter 500m entfernt
+            gewaehltesFeature = nearA;
+            featProps = datenA.features[gewaehltesFeature.properties.index].properties;
+        } 
+        else if (distB <= 0.25) { 
+            // Danach Bundesstraße, wenn unter 250m entfernt
+            gewaehltesFeature = nearB;
+            featProps = datenB.features[gewaehltesFeature.properties.index].properties;
+        } 
+        else { 
+            // Fallback auf die absolut nächste Straße (meist L)
+            let minDist = Math.min(distA, distB, distL);
+            if (minDist === distA) { gewaehltesFeature = nearA; featProps = datenA.features[gewaehltesFeature.properties.index].properties; }
+            else if (minDist === distB) { gewaehltesFeature = nearB; featProps = datenB.features[gewaehltesFeature.properties.index].properties; }
+            else if (minDist === distL) { gewaehltesFeature = nearL; featProps = datenL.features[gewaehltesFeature.properties.index].properties; }
         }
 
-        const props = gewaehltesFeature.properties;
-        const featProps = strassenDaten.features[props.index]?.properties || props;
-        
+        if(!gewaehltesFeature) return;
+
         const strKl = String(featProps.STRKL || "").trim();
         const strNr = String(featProps.STRNR || "").trim();
         const strName = strKl + strNr;
         const dist = Math.round(gewaehltesFeature.properties.dist * 1000);
 
         const statAnf = parseFloat(featProps.STATANF) || 0;
-        const meter = (props.location || 0) * 1000;
+        const meter = (gewaehltesFeature.properties.location || 0) * 1000;
         const bkm = (statAnf + meter) / 1000;
 
         document.getElementById("km").value = bkm.toFixed(3).replace('.', ',');
