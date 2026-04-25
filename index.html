@@ -344,7 +344,7 @@ function verarbeiteGPS(lat, lon, acc){
                     let k_icon = (k.props.STRKL === "B" || k.props.STRKL === "b") ? "🚙" : "🌲";
                     btnText = `${k_icon} ${k.name}`;
                 }
-                htmlOutput += `<button onclick="wechsleFokus('${k.name}')" style="margin: 4px 4px 0 0; padding: 6px 12px; width: auto; font-size: 0.85em; background: transparent; color: var(--text-main); border: 1px solid var(--accent); border-radius: 6px;">${btnText}</button>`;
+                htmlOutput += `<button type="button" onclick="wechsleFokus('${k.name}')" style="margin: 4px 4px 0 0; padding: 6px 12px; width: auto; font-size: 0.85em; background: transparent; color: var(--text-main); border: 1px solid var(--accent); border-radius: 6px;">${btnText}</button>`;
             });
             htmlOutput += `</div>`;
         }
@@ -354,16 +354,35 @@ function verarbeiteGPS(lat, lon, acc){
     }
 }
 
+function wechsleFokus(zielName) {
+    manuellerFokus = zielName;
+    
+    // 1. UI sofort erzwingen, damit die Liste sofort auftaucht!
+    let drop = document.getElementById("autobahn");
+    if (Array.from(drop.options).some(o => o.value === zielName)) {
+        drop.value = zielName;
+        zeigeListe();       // Lädt die Anschlussstellen
+        updateRichtung();   // Lädt die Richtungen
+        berechnen();        // Aktualisiert den Balken
+    }
+    
+    // 2. Danach GPS neu berechnen, damit der BKM oben links stimmt
+    if (letzteLat !== 0) {
+        verarbeiteGPS(letzteLat, letzteLon, letzteAcc);
+    }
+}
+
+    
 // --- DER VERBESSERTE SCANNER ---
 function findeKandidaten(liste, pt, filter, maxDist){
     let hits = {};
     liste.forEach(f=>{
         try{ 
             const props = f.properties || {};
-            // Robustere Namenserkennung: Nimmt STRBEZ falls vorhanden, sonst Klasse + Nummer
+            // Wir bauen den Namen STRUKTURIERT zusammen (A + 46 = A46)
             const strKl = String(props.STRKL || "").toUpperCase();
             const strNr = String(props.STRNR || "");
-            const name = String(props.STRBEZ || (strKl + strNr)).toUpperCase().replace(/\s/g,'');
+            const name = (strKl + strNr).toUpperCase().replace(/\s/g,'');
             
             if (filter) {
                 if (Array.isArray(filter) && !filter.includes(name)) return;
