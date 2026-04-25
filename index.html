@@ -257,50 +257,56 @@ watchId = navigator.geolocation.watchPosition(pos => {
 }
 
 function verarbeiteGPS(lat, lon, acc){
-    // Letzte Position merken, falls wir per Button sofort neu berechnen wollen
     letzteLat = lat; letzteLon = lon; letzteAcc = acc;
-
-    const pt=turf.point([lon, lat]);
+    const pt = turf.point([lon, lat]);
     const meineAutobahnen = Object.keys(grenzen);
-    let alleDaten = datenBAB.concat(datenLand);
     let prio = document.getElementById("prioMode") ? document.getElementById("prioMode").value : "bab";
     
-    let kandidaten = [];
+    // 1. WIR SUCHEN ÜBERALL: Beide Dateien zusammenlegen
+    let alleDaten = datenBAB.concat(datenLand);
 
-    // --- 1. KANDIDATEN SAMMELN (Alle im Umkreis von 2km) ---
-    if (prio === "bab") {
-        kandidaten = findeKandidaten(datenBAB, pt, meineAutobahnen, 2.0);
-        if (!kandidaten.length) kandidaten = findeKandidaten(alleDaten, pt, "BUND", 2.0);
-        if (!kandidaten.length) kandidaten = findeKandidaten(alleDaten, pt, "LAND", 2.0);
-    } else if (prio === "bund") {
-        kandidaten = findeKandidaten(alleDaten, pt, "BUND", 2.0);
-        if (!kandidaten.length) kandidaten = findeKandidaten(datenBAB, pt, meineAutobahnen, 2.0);
-        if (!kandidaten.length) kandidaten = findeKandidaten(alleDaten, pt, "LAND", 2.0);
-    } else { 
-        kandidaten = findeKandidaten(alleDaten, pt, "LAND", 2.0);
-        if (!kandidaten.length) kandidaten = findeKandidaten(alleDaten, pt, "BUND", 2.0);
-        if (!kandidaten.length) kandidaten = findeKandidaten(datenBAB, pt, meineAutobahnen, 2.0);
-    }
+    // 2. KANDIDATEN SAMMELN (Suche in ALLEN Daten nach den entsprechenden Mustern)
+    let babHits = findeKandidaten(alleDaten, pt, meineAutobahnen, 2.0); 
+    let bundHits = findeKandidaten(alleDaten, pt, "BUND", 2.0);
+    let landHits = findeKandidaten(alleDaten, pt, "LAND", 2.0);
+    
+    let alleKandidaten = [...babHits, ...bundHits, ...landHits];
+    
+    // Duplikate filtern (falls eine Straße in beiden Dateien gleich heißt)
+    let uniqueKandidaten = [];
+    let seenNames = new Set();
+    alleKandidaten.forEach(k => {
+        if (!seenNames.has(k.name)) {
+            seenNames.add(k.name);
+            uniqueKandidaten.push(k);
+        }
+    });
 
-    if(kandidaten.length > 0){
-        // --- 2. STICKY FOCUS LOGIK ---
-        let sel = kandidaten[0]; // Standard: Nimm immer den absolut nächsten
+    if(uniqueKandidaten.length > 0){
+        let sel = null;
         
-        // Finde alle Straßen, die extrem nah sind (z.B. 400m am Kreuz)
-        let nahBereich = kandidaten.filter(k => k.dist <= 0.4); 
+        // 3. NAHBEREICH FÜR BUTTONS (Erhöht auf 800 Meter für große Kreuze!)
+        let nahBereich = uniqueKandidaten.filter(k => k.dist <= 0.8); 
 
-        // Wenn der User einen manuellen Fokus gesetzt hat UND diese Straße im Nahbereich ist:
+        // 4. STICKY FOCUS PRÜFEN
         if (manuellerFokus) {
             let focusMatch = nahBereich.find(k => k.name === manuellerFokus);
-            if (focusMatch) sel = focusMatch; // Ignoriere Distanz, nimm die gewählte Straße!
+            if (focusMatch) sel = focusMatch; 
+        }
+
+        // 5. PRIORITÄT WÄHLEN (Falls kein Fokus gesetzt oder Fokus außer Reichweite ist)
+        if (!sel) {
+            if (prio === "bab") sel = babHits[0] || bundHits[0] || landHits[0];
+            else if (prio === "bund") sel = bundHits[0] || babHits[0] || landHits[0];
+            else sel = landHits[0] || bundHits[0] || babHits[0];
         }
 
         const props = sel.feature.properties || {};
-        const strName = sel.name;
+        const strName = sel.name; 
         const drop = document.getElementById("autobahn");
         let htmlOutput = "";
         
-        // --- 3. AUTOBAHN ODER LANDSTRASSE BERECHNEN ---
+        // --- AUTOBAHN ODER LANDSTRASSE BERECHNEN ---
         if(Array.from(drop.options).some(o=>o.value===strName)){
             let bkm = berechneGoldgriffBKM(pt, strName);
             document.getElementById("km").value = bkm.toFixed(3).replace('.',',');
@@ -323,11 +329,11 @@ function verarbeiteGPS(lat, lon, acc){
             document.getElementById("progress").style.width="0%"; document.getElementById("liste").innerHTML="";
         }
 
-        // --- 4. KREUZUNGS-UI (Die Wechsel-Buttons bauen) ---
+        // --- KREUZUNGS-UI (Die Wechsel-Buttons bauen) ---
         let andereImKreuz = nahBereich.filter(k => k.name !== sel.name);
         if (andereImKreuz.length > 0) {
             htmlOutput += `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--input-border); text-align: left;">`;
-            htmlOutput += `<span style="font-size:0.8em; color:var(--text-secondary);">📍 Mehrere Straßen erkannt. Wechsle zu:</span><br>`;
+            htmlOutput += `<span style="font-size:0.8em; color:var(--text-secondary);">📍 Mehrere Straßen im Umkreis. Wechsle zu:</span><br>`;
             
             andereImKreuz.forEach(k => {
                 let btnText = "";
@@ -338,36 +344,26 @@ function verarbeiteGPS(lat, lon, acc){
                     let k_icon = (k.props.STRKL === "B" || k.props.STRKL === "b") ? "🚙" : "🌲";
                     btnText = `${k_icon} ${k.name}`;
                 }
-                
                 htmlOutput += `<button onclick="wechsleFokus('${k.name}')" style="margin: 4px 4px 0 0; padding: 6px 12px; width: auto; font-size: 0.85em; background: transparent; color: var(--text-main); border: 1px solid var(--accent); border-radius: 6px;">${btnText}</button>`;
             });
             htmlOutput += `</div>`;
         }
-
         document.getElementById("gps-info").innerHTML = htmlOutput;
-
     } else {
         document.getElementById("gps-info").innerHTML = `❓ Keine Straße im Umkreis gefunden.`;
     }
 }
 
-// --- DIE BUTTON-FUNKTION ---
-function wechsleFokus(name) {
-    manuellerFokus = name; // Wir sperren das System auf diese Straße
-    // Neu berechnen sofort erzwingen, ohne auf das nächste GPS Signal zu warten!
-    if (letzteLat !== 0) {
-        verarbeiteGPS(letzteLat, letzteLon, letzteAcc);
-    }
-}
-
-// --- DER NEUE SCANNER (Sammelt ALLE Linien, nicht nur eine) ---
+// --- DER VERBESSERTE SCANNER ---
 function findeKandidaten(liste, pt, filter, maxDist){
     let hits = {};
     liste.forEach(f=>{
         try{ 
             const props = f.properties || {};
-            const strKl = (props.STRKL || "").toUpperCase();
-            const name = (strKl + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
+            // Robustere Namenserkennung: Nimmt STRBEZ falls vorhanden, sonst Klasse + Nummer
+            const strKl = String(props.STRKL || "").toUpperCase();
+            const strNr = String(props.STRNR || "");
+            const name = String(props.STRBEZ || (strKl + strNr)).toUpperCase().replace(/\s/g,'');
             
             if (filter) {
                 if (Array.isArray(filter) && !filter.includes(name)) return;
@@ -377,18 +373,17 @@ function findeKandidaten(liste, pt, filter, maxDist){
 
             let d = turf.pointToLineDistance(pt, f); 
             if (d <= maxDist) {
-                // Wenn wir die Straße noch nicht haben ODER dieses Segment näher ist, speichern:
                 if (!hits[name] || d < hits[name].dist) {
                     hits[name] = { feature: f, dist: d, name: name, props: props };
                 }
             } 
         } catch(e){}
     });
-    
-    // Konvertiere in ein Array und sortiere aufsteigend nach Distanz
     return Object.values(hits).sort((a, b) => a.dist - b.dist);
 }
 
+
+    
     
 // --- DIE SCHLAUE SUCHFUNKTION ---
 function findeNaechsteLinie(liste, pt, filter){
