@@ -119,8 +119,9 @@ th { background: var(--table-head); }
 <h2>Zuständigkeitsfinder</h2>
     
     <select id="prioMode">
-        <option value="bab">Priorität: Autobahn</option>
-        <option value="land">Priorität: Landstraße</option>
+        <option value="bab">🛣️ Priorität: Autobahn</option>
+        <option value="bund">🚙 Priorität: Bundesstraße</option>
+        <option value="land">🌲 Priorität: Landstraße</option>
     </select>
     
 
@@ -255,32 +256,41 @@ function verarbeiteGPS(lat, lon, acc){
     const pt=turf.point([lon, lat]);
     const meineAutobahnen = Object.keys(grenzen);
     
-    let nBAB=findeNaechsteLinie(datenBAB, pt, meineAutobahnen);
-    let nLand=findeNaechsteLinie(datenLand, pt, null);
+    // Da wir nicht wissen, in welcher Datei die Bundesstraße steckt, durchsuchen wir einfach beide!
+    let alleDaten = datenBAB.concat(datenLand);
+    
+    // Wir lassen drei "Spürhunde" gleichzeitig los:
+    let nBAB=findeNaechsteLinie(datenBAB, pt, meineAutobahnen); // Sucht nur VIP-Autobahnen
+    let nBund=findeNaechsteLinie(alleDaten, pt, "BUND");        // Sucht nur Straßenklasse "B"
+    let nLand=findeNaechsteLinie(alleDaten, pt, "LAND");        // Sucht Straßenklasse "L" oder "K"
     
     let sel = null;
-    
-    // --- NEU: Den Umschalter auslesen ---
     let prio = document.getElementById("prioMode") ? document.getElementById("prioMode").value : "bab";
 
-    // --- DIE DYNAMISCHE PRIORITÄT ---
+    // --- DIE DYNAMISCHE 3-WEGE KASKADE ---
     if (prio === "bab") {
-        // Modus 1: Autobahn gewinnt (Wenn in 2km Nähe)
         if (nBAB && nBAB.dist <= 2.0) sel = nBAB;
-        else if (nLand) sel = nLand;
-    } else {
-        // Modus 2: Landstraße gewinnt (Wenn in 2km Nähe)
+        else if (nBund && nBund.dist <= 2.0) sel = nBund;
+        else sel = nLand;
+    } else if (prio === "bund") {
+        if (nBund && nBund.dist <= 2.0) sel = nBund;
+        else if (nBAB && nBAB.dist <= 2.0) sel = nBAB;
+        else sel = nLand;
+    } else { 
+        // Modus: Landstraße
         if (nLand && nLand.dist <= 2.0) sel = nLand;
-        else if (nBAB) sel = nBAB;
+        else if (nBund && nBund.dist <= 2.0) sel = nBund;
+        else sel = nBAB;
     }
 
+    // --- ANZEIGE LOGIK ---
     if(sel){
         const props=sel.feature.properties||{};
         const strName=((props.STRKL||"")+(props.STRNR||"")).toUpperCase().replace(/\s/g,'');
         const drop=document.getElementById("autobahn");
         
+        // Ist es eine unserer hinterlegten VIP-Autobahnen?
         if(Array.from(drop.options).some(o=>o.value===strName)){
-            // --- AUTOBAHN LOGIK ---
             let bkm=berechneGoldgriffBKM(pt, strName);
             document.getElementById("km").value=bkm.toFixed(3).replace('.',',');
             drop.value=strName;
@@ -288,7 +298,7 @@ function verarbeiteGPS(lat, lon, acc){
             zeigeListe(); updateRichtung(); berechnen();
             
         } else {
-            // --- LANDSTRASSEN LOGIK ---
+            // Es ist eine Bundes- oder Landstraße! (Netzknoten Logik)
             let abschnitt = props.ABSNR || "Unbekannt";
             let ast = props.ABSAST && props.ABSAST !== "" ? ` (${props.ABSAST})` : "";
             
@@ -297,8 +307,11 @@ function verarbeiteGPS(lat, lon, acc){
             let startKM = parseFloat(props.STATANF) || 0;
             let aktuellerKM = startKM + distanzAufLinie;
             
+            // Emoji je nach gefundener Straße anpassen
+            let icon = (props.STRKL === "B" || props.STRKL === "b") ? "🚙" : "🌲";
+            
             document.getElementById("gps-info").innerHTML=
-                `<span style="color:orange;font-weight:bold;">ℹ️ ${strName} erkannt</span><br>`+
+                `<span style="color:orange;font-weight:bold;">${icon} ${strName} erkannt</span><br>`+
                 `<small>Abschnitt: <b>${abschnitt}${ast}</b> | KM: <b>${aktuellerKM.toFixed(3)}</b></small>`;
             
             document.getElementById("km").value = "";
@@ -314,6 +327,35 @@ function verarbeiteGPS(lat, lon, acc){
     }
 }
 
+// --- DIE SCHLAUE SUCHFUNKTION ---
+function findeNaechsteLinie(liste, pt, filter){
+    let min=Infinity, found=null;
+    liste.forEach(f=>{
+        try{ 
+            const props = f.properties || {};
+            const strKl = (props.STRKL || "").toUpperCase();
+            const name = (strKl + (props.STRNR || "")).toUpperCase().replace(/\s/g,'');
+            
+            if (filter) {
+                // 1. Array übergeben (z.B. VIP-Autobahnen) -> Exakter Namensabgleich
+                if (Array.isArray(filter) && !filter.includes(name)) return;
+                
+                // 2. Suche nach Bundesstraße -> Darf NUR "B" sein
+                if (filter === "BUND" && strKl !== "B") return;
+                
+                // 3. Suche nach Landstraße -> Alles ignorieren, was Autobahn oder Bundesstraße ist
+                if (filter === "LAND" && (strKl === "A" || strKl === "B" || name.startsWith("A"))) return;
+            }
+
+            let d=turf.pointToLineDistance(pt, f); 
+            if(d<min){min=d; found=f;} 
+        } catch(e){}
+    });
+    return found ? {feature:found, dist:min} : null;
+}
+
+
+    
 // Die verbesserte Suchfunktion mit eingebautem Filter
 function findeNaechsteLinie(liste, pt, filterNamen){
     let min=Infinity, found=null;
