@@ -459,15 +459,43 @@ function berechneGoldgriffBKM(meinPunkt, strName){
         if(!f.properties||!f.properties.Bez) return false;
         return String(f.properties.Bez).toUpperCase().replace(/\s/g,'').replace('A','')===suchName;
     });
-    if(passende.length>0){
-        let ptsColl=turf.featureCollection(passende);
-        let closest=turf.nearestPoint(meinPunkt, ptsColl);
-        let refKM=parseFloat(String(closest.properties.Kilometer).replace(',','.'));
-        let dist=turf.distance(meinPunkt, closest);
+    
+    if(passende.length > 1){
+        // 1. Berechne die Distanz zu allen passenden Referenzpunkten
+        passende.forEach(p => {
+            p.tempDist = turf.distance(meinPunkt, p);
+        });
+        
+        // 2. Sortiere die Punkte nach Distanz (die nächsten beiden sind dann Index 0 und 1)
+        passende.sort((a, b) => a.tempDist - b.tempDist);
+        
+        let closest = passende[0];
+        let secondClosest = passende[1];
+        
+        let refKM1 = parseFloat(String(closest.properties.Kilometer).replace(',','.'));
+        let refKM2 = parseFloat(String(secondClosest.properties.Kilometer).replace(',','.'));
+        
+        // 3. Logik: Befinden wir uns "vor" oder "hinter" dem nächsten Punkt?
+        // Wenn der zweitnächste Punkt einen KLEINEREN Kilometerwert hat, 
+        // sind wir VOR dem nächsten Punkt -> wir müssen die Distanz ABZIEHEN!
+        if (refKM2 < refKM1) {
+            return refKM1 - closest.tempDist;
+        } else {
+            // Ansonsten sind wir HINTER dem Punkt -> Distanz ADDIEREN!
+            return refKM1 + closest.tempDist;
+        }
+        
+    } else if (passende.length === 1) {
+        // Fallback, falls nur ein Punkt auf der ganzen Autobahn gefunden wird
+        let closest = passende[0];
+        let refKM = parseFloat(String(closest.properties.Kilometer).replace(',','.'));
+        let dist = turf.distance(meinPunkt, closest);
         return refKM + dist;
     }
+    
     return 0;
 }
+
 
 function findeNaechsteLinie(liste, pt){
     let min=Infinity, found=null;
