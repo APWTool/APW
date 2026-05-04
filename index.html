@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Autobahn Tool Pro Max</title>
 
+<!-- GoatCounter Analytics -->
+<script data-goatcounter="https://apwpatrick.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#007BFF">
 <link rel="apple-touch-icon" href="icon-192.png.png">
@@ -17,7 +20,7 @@
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
-      console.log('Service Worker registriert!', reg);
+      console.log('Service Worker registriert!');
     });
   });
 }
@@ -43,6 +46,7 @@ button { background: var(--accent); color: white; border: none; cursor: pointer;
 button:hover { filter: brightness(1.1); }
 button.active { background: #dc3545; }
 .btn-secondary { background: #28a745; margin-top: 8px; }
+.btn-tertiary { background: #17a2b8; margin-top: 8px; }
 
 .table-container { display: flex; align-items: stretch; gap: 6px; margin-top: 15px; }
 .table-wrapper { flex: 1; min-width: 0; overflow-x: auto; }
@@ -72,6 +76,11 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
 .center-pin { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); font-size: 45px; z-index: 1000; pointer-events: none; text-shadow: 0px 2px 5px rgba(0,0,0,0.5); }
 .map-footer { flex-shrink: 0; padding: 15px; background: var(--bg-card); box-shadow: 0 -2px 10px rgba(0,0,0,0.2); z-index: 10000; }
 #nk-map-result { display: none; margin-top: 10px; }
+
+/* FUSSEILE */
+.footer-nav { display: flex; justify-content: center; gap: 20px; font-size: 0.85em; margin-top: 5px; margin-bottom: 20px; }
+.footer-nav a { color: var(--text-secondary); text-decoration: none; font-weight: bold; cursor: pointer; }
+.footer-nav a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -92,16 +101,17 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
     </div>
 </div>
 
-<div class="card">
+<!-- HAUPTSEITE -->
+<div class="card" id="page-main">
     <div class="theme-switch" onclick="toggleTheme()">🌓</div>
     <h2>Zuständigkeitsfinder</h2>
     
     <div class="wache-buttons" id="wache-container">
-        <button class="wache-btn" data-wache="Hilden" onclick="wechsleWache('Hilden')">Hilden</button>
-        <button class="wache-btn" data-wache="Mülheim" onclick="wechsleWache('Mülheim')">Mülheim</button>
-        <button class="wache-btn" data-wache="Hünxe" onclick="wechsleWache('Hünxe')">Hünxe</button>
-        <button class="wache-btn" data-wache="Moers" onclick="wechsleWache('Moers')">Moers</button>
-        <button class="wache-btn" data-wache="Gladbach" onclick="wechsleWache('Gladbach')">Gladbach</button>
+        <button class="wache-btn" data-wache="Hilden" onclick="wechsleWache('Hilden', true)">Hilden</button>
+        <button class="wache-btn" data-wache="Mülheim" onclick="wechsleWache('Mülheim', true)">Mülheim</button>
+        <button class="wache-btn" data-wache="Hünxe" onclick="wechsleWache('Hünxe', true)">Hünxe</button>
+        <button class="wache-btn" data-wache="Moers" onclick="wechsleWache('Moers', true)">Moers</button>
+        <button class="wache-btn" data-wache="Gladbach" onclick="wechsleWache('Gladbach', true)">Gladbach</button>
     </div>
 
     <select id="prioMode" onchange="manuellerFokus = null; if(watchId) { navigator.geolocation.getCurrentPosition(p => verarbeiteGPS(p.coords.latitude, p.coords.longitude, p.coords.accuracy)); }">
@@ -110,7 +120,7 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <option value="land">🌲 Priorität: Landstraße</option>
     </select>
     
-    <select id="autobahn" onchange="manuellerFokus = this.value; updateUI(); updateRichtung();"></select>
+    <select id="autobahn" onchange="manuellerFokus = this.value; updateUI(); updateRichtung(); berechnen(true);"></select>
     <input id="km" placeholder="Kilometer eingeben" inputmode="decimal" oninput="berechnen(true)">
 
     <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
@@ -118,6 +128,7 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
 
     <button onclick="berechnen(true)">Manuell Berechnen</button>
     <button class="btn-secondary" onclick="openMap()">📝 NK auf Karte erfassen</button>
+    <button class="btn-tertiary" onclick="showPage('page-wegzeit')">⏱️ Weg-Zeit Rechner</button>
 
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
@@ -137,9 +148,14 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         </div>
         <div id="dir-minus" class="direction-arrow"><span class="arrow-icon">⬆</span><span class="dir-text" id="dir-minus-text"></span></div>
     </div>
+
+    <div style="text-align:center; font-size: 0.85em; margin-top: 15px;">
+        <label><input type="checkbox" id="saveWache" onchange="saveWacheSetting()"> Ausgewählte Wache als Standard speichern</label>
+    </div>
 </div>
 
-<div class="card">
+<!-- WEG-ZEIT RECHNER SEITE -->
+<div class="card" id="page-wegzeit" style="display:none;">
     <h2>Weg-Zeit Rechner</h2>
     <input id="start_km" placeholder="Start km" inputmode="decimal">
     <input id="speed" placeholder="Geschwindigkeit (km/h)" inputmode="numeric">
@@ -151,6 +167,38 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <p><strong>Ziel km:</strong> <span id="ziel_km">-</span></p>
         <p><strong>Nächste AS:</strong> <span id="next_as">-</span></p>
     </div>
+    <button class="btn-secondary" onclick="showPage('page-main')">Zurück zur Hauptseite</button>
+</div>
+
+<!-- IMPRESSUM SEITE -->
+<div class="card" id="page-impressum" style="display:none;">
+    <h2>Impressum</h2>
+    <div style="font-size: 0.9em; line-height: 1.5;">
+        <p><strong>Angaben gemäß DDG:</strong><br>
+        [Dein Name / Deine Behörde]<br>
+        [Deine Adresse]<br>
+        [Kontakt-E-Mail]</p>
+        <p><strong>Datenschutzhinweis:</strong><br>
+        Diese App nutzt GPS zur Berechnung lokaler Straßenkilometer. Es werden grundlegende, anonyme Aufrufstatistiken über GoatCounter erhoben. Personenbezogene Daten werden nicht gespeichert.</p>
+    </div>
+    <button class="btn-secondary" onclick="showPage('page-main')">Zurück</button>
+</div>
+
+<!-- HINWEISE SEITE -->
+<div class="card" id="page-hinweise" style="display:none;">
+    <h2>Hinweise</h2>
+    <div style="font-size: 0.9em; line-height: 1.5;">
+        <p><strong>Datenquellen:</strong><br>
+        Die Geo-Daten basieren auf OpenData Straßen.NRW und wurden mithilfe von Turf.js sowie Leaflet.js verarbeitet.</p>
+        <p><strong>Haftungsausschluss:</strong><br>
+        Alle Angaben ohne Gewähr. Die berechneten Netzknoten und Betriebskilometer dienen lediglich der Orientierung.</p>
+    </div>
+    <button class="btn-secondary" onclick="showPage('page-main')">Zurück</button>
+</div>
+
+<div class="footer-nav" id="footer-nav">
+    <a onclick="showPage('page-impressum')">Impressum</a>
+    <a onclick="showPage('page-hinweise')">Hinweise</a>
 </div>
 
 <script>
@@ -180,7 +228,6 @@ let letzteLat = 0, letzteLon = 0, letzteAcc = 0;
 let bkmHistorie = []; 
 let manuellerFokus = null;
 let map = null;
-let osmCacheData = { lat: 0, lon: 0, time: 0, html: "Warte auf Bewegung..." };
 
 if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.documentElement.setAttribute("data-theme", "dark");
@@ -190,6 +237,22 @@ function toggleTheme() {
     const doc = document.documentElement;
     if (doc.getAttribute("data-theme") === "dark") doc.setAttribute("data-theme", "light"); 
     else doc.setAttribute("data-theme", "dark");
+}
+
+function showPage(pageId) {
+    document.getElementById('page-main').style.display = 'none';
+    document.getElementById('page-wegzeit').style.display = 'none';
+    document.getElementById('page-impressum').style.display = 'none';
+    document.getElementById('page-hinweise').style.display = 'none';
+    document.getElementById('map-overlay').style.display = 'none';
+    
+    document.getElementById(pageId).style.display = 'block';
+    
+    if(pageId === 'page-main') {
+        document.getElementById('footer-nav').style.display = 'flex';
+    } else {
+        document.getElementById('footer-nav').style.display = 'none';
+    }
 }
 
 Promise.all([
@@ -203,7 +266,7 @@ Promise.all([
     referenzPunkte = extrahiere(punkte, false);
     datenGemeinden = extrahiereGemeinden(gem); 
     document.getElementById("gps-info").innerHTML='<span style="color:green; font-weight:bold;">✅ Geo-Datenbank geladen</span>';
-    wechsleWache('Hilden');
+    loadWacheSetting();
 }).catch(e => { 
     document.getElementById("gps-info").innerHTML='<span style="color:red;">❌ Fehler beim Laden der Geo-Dateien.</span>';
 });
@@ -227,7 +290,23 @@ function extrahiereGemeinden(json) {
     return list;
 }
 
-function wechsleWache(wacheName) {
+function saveWacheSetting() {
+    let isChecked = document.getElementById('saveWache').checked;
+    if (isChecked) localStorage.setItem('stdWache', aktuelleWache);
+    else localStorage.removeItem('stdWache');
+}
+
+function loadWacheSetting() {
+    let std = localStorage.getItem('stdWache');
+    if (std && datenWachen[std]) {
+        document.getElementById('saveWache').checked = true;
+        wechsleWache(std, false);
+    } else {
+        wechsleWache('Hilden', false);
+    }
+}
+
+function wechsleWache(wacheName, triggerEvent = false) {
     aktuelleWache = wacheName;
     document.querySelectorAll('.wache-btn').forEach(btn => {
         if(btn.dataset.wache === wacheName) btn.classList.add('active-wache');
@@ -242,9 +321,18 @@ function wechsleWache(wacheName) {
         autobahnen.forEach(a => { let opt = document.createElement("option"); opt.value = a; opt.textContent = a; drop.appendChild(opt); });
     }
     
+    if (document.getElementById('saveWache').checked) {
+        localStorage.setItem('stdWache', wacheName);
+    }
+
+    if (triggerEvent && window.goatcounter) {
+        window.goatcounter.count({path: 'wache-' + wacheName, title: 'Wache: ' + wacheName, event: true});
+    }
+
     manuellerFokus = null;
     updateUI();
     updateRichtung();
+    berechnen(true);
 }
 
 function holeKoordinateFuerKM(autobahn, km) {
@@ -303,16 +391,11 @@ function updateUI() {
     if(wachenListen[a]) {
         wachenListen[a].forEach(e => {
             let typ = e[0]; let name = e[1]; let kmRaw = e[2]; let rf = e[3]; 
-            let baseKm = parseFloat(kmRaw.split('-')[0].replace(',', '.'));
-            let nameHtml = name;
-
-            if (!isNaN(baseKm)) {
-                let coords = holeKoordinateFuerKM(a, baseKm);
-                if (coords) {
-                    let mapLink = `https://www.google.com/maps/search/?api=1&query=${coords[1]},${coords[0]}`;
-                    nameHtml = `<a href="${mapLink}" target="_blank">${name}</a>`;
-                }
-            }
+            
+            // Intelligenter Google Maps Link statt fehleranfälliger GPS-Snap!
+            let searchQuery = encodeURIComponent(`${a} ${typ} ${name}`);
+            let mapLink = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+            let nameHtml = `<a href="${mapLink}" target="_blank">${name}</a>`;
 
             if (rf) {
                 nameHtml += `<br><span style="font-size:0.85em; color:var(--text-secondary); font-weight:normal;">${rf}</span>`;
@@ -325,8 +408,6 @@ function updateUI() {
     } else {
         tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>Keine Liste hinterlegt.</td></tr>";
     }
-
-    berechnen(true); 
 }
 
 function updateRichtung(){
@@ -381,34 +462,6 @@ function holeNKHtml(props, distMeter = 0, isMap = false) {
     `;
 }
 
-async function fetchLiveOSMData(lat, lon) {
-    let now = Date.now();
-    let ptNow = turf.point([lon, lat]);
-    let ptOld = turf.point([osmCacheData.lon, osmCacheData.lat]);
-    let dist = turf.distance(ptNow, ptOld, {units: 'meters'});
-
-    if (osmCacheData.lat !== 0 && dist < 50 && (now - osmCacheData.time) < 15000) return osmCacheData.html; 
-
-    let query = `[out:json][timeout:5];way(around:20,${lat},${lon})["highway"~"motorway|motorway_link|trunk|primary"];out tags;`;
-    try {
-        let response = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query });
-        if(response.ok) {
-            let data = await response.json();
-            if (data.elements && data.elements.length > 0) {
-                let tags = data.elements[0].tags;
-                let maxspeed = tags.maxspeed ? `${tags.maxspeed} km/h` : "Unbekannt";
-                let lanes = tags.lanes ? `${tags.lanes}` : "Unbekannt";
-                
-                osmCacheData.html = `Max. Tempo: <b>${maxspeed}</b><br>Fahrstreifen: <b>${lanes}</b>`;
-                osmCacheData.lat = lat; osmCacheData.lon = lon; osmCacheData.time = now;
-                return osmCacheData.html;
-            }
-        }
-    } catch(e) {}
-    
-    return `Max. Tempo: Unbekannt<br>Fahrstreifen: Unbekannt`;
-}
-
 let watchId=null;
 function toggleGPS(){
     const btn=document.getElementById("gpsBtn"), info=document.getElementById("gps-info");
@@ -455,13 +508,12 @@ async function verarbeiteGPS(lat, lon, acc){
     letzteLat = lat; letzteLon = lon; letzteAcc = acc;
     const pt = turf.point([lon, lat]);
     let prio = document.getElementById("prioMode").value;
-    const meineAutobahnen = Object.keys(datenWachen[aktuelleWache].grenzen || {});
     
     document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
     
     let alleDaten = datenBAB.concat(datenLand);
 
-    let babHits = findeKandidaten(alleDaten, pt, null, 2.0).filter(k => k.name.startsWith("A")); // Sucht alle BABs, Wachen-Filter kommt gleich
+    let babHits = findeKandidaten(alleDaten, pt, null, 2.0).filter(k => k.name.startsWith("A"));
     let bundHits = findeKandidaten(alleDaten, pt, "BUND", 2.0);
     let landHits = findeKandidaten(alleDaten, pt, "LAND", 2.0);
     
@@ -495,29 +547,44 @@ async function verarbeiteGPS(lat, lon, acc){
         const drop = document.getElementById("autobahn");
         let htmlOutput = "";
         
-        // --- AUTO-WACHEN WECHSEL ---
-        if (strName.startsWith("A") && (!datenWachen[aktuelleWache] || !datenWachen[aktuelleWache].grenzen[strName])) {
-            for (let wache in datenWachen) {
-                if (datenWachen[wache].grenzen[strName]) {
-                    wechsleWache(wache);
-                    break;
+        // --- AUTO-WACHEN WECHSEL BEI GPS ---
+        if (strName.startsWith("A")) {
+            let needsSwitch = true;
+            let currentGrenzen = datenWachen[aktuelleWache].grenzen[strName];
+            let bkm = berechneGoldgriffBKM(pt, strName);
+            
+            if (currentGrenzen && bkm >= Math.min(...currentGrenzen) && bkm <= Math.max(...currentGrenzen)) {
+                needsSwitch = false; 
+            }
+            
+            if (needsSwitch) {
+                for (let wache in datenWachen) {
+                    let g = datenWachen[wache].grenzen[strName];
+                    if (g && bkm >= Math.min(...g) && bkm <= Math.max(...g)) {
+                        wechsleWache(wache, true);
+                        if(Array.from(document.getElementById("autobahn").options).some(o=>o.value===strName)) {
+                            document.getElementById("autobahn").value = strName;
+                        }
+                        updateUI();
+                        updateRichtung();
+                        break;
+                    }
                 }
             }
         }
 
         // --- AUTOBAHN ERKANNT ---
-        if(Array.from(drop.options).some(o=>o.value===strName)){
+        if(Array.from(document.getElementById("autobahn").options).some(o=>o.value===strName)){
             let bkm = berechneGoldgriffBKM(pt, strName);
             document.getElementById("km").value = bkm > 0 ? bkm.toFixed(3).replace('.',',') : "";
-            if (drop.value !== strName) {
-                drop.value = strName;
+            if (document.getElementById("autobahn").value !== strName) {
+                document.getElementById("autobahn").value = strName;
                 updateUI();
                 updateRichtung();
             }
             manuellerFokus = strName; 
             berechnen(false);
 
-            // Richtungs-Logik mit RF Bezeichnung
             let dirText = "";
             let rfListe = datenWachen[aktuelleWache].richtungen[strName]; 
             if(bkm > 0) {
@@ -533,15 +600,7 @@ async function verarbeiteGPS(lat, lon, acc){
             let bkmAnzeige = bkm > 0 ? bkm.toFixed(3) : "-";
             if(dirText) bkmAnzeige += ` | <strong>${dirText}</strong>`;
             
-            htmlOutput = `
-                <span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige}
-                <div style="margin-top:8px; padding:8px; background:var(--result-bg); border-radius:6px; font-size:0.9em; text-align:left;" id="osm-container">Lade Verkehrsdaten... ⏳</div>
-            `;
-            
-            fetchLiveOSMData(lat, lon).then(osmHTML => {
-                let osmContainer = document.getElementById("osm-container");
-                if(osmContainer) osmContainer.innerHTML = osmHTML;
-            });
+            htmlOutput = `<span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige}`;
 
         } else {
             // --- LANDSTRASSE ERKANNT ---
@@ -568,7 +627,7 @@ async function verarbeiteGPS(lat, lon, acc){
             
             andereImKreuz.forEach(k => {
                 let btnText = "";
-                if (Array.from(drop.options).some(o=>o.value===k.name)) {
+                if (Array.from(document.getElementById("autobahn").options).some(o=>o.value===k.name)) {
                     let k_bkm = berechneGoldgriffBKM(pt, k.name);
                     btnText = `🛣️ ${k.name} (KM ${k_bkm.toFixed(1)})`;
                 } else {
@@ -593,14 +652,13 @@ function wechsleFokus(zielName) {
         drop.value = zielName;
         updateUI();      
         updateRichtung();  
-        berechnen();       
+        berechnen(true);       
     }
     if (letzteLat !== 0) {
         verarbeiteGPS(letzteLat, letzteLon, letzteAcc);
     }
 }
 
-// BKM Interpolation (Genauigkeit der APW App wiederhergestellt)
 function berechneGoldgriffBKM(meinPunkt, strName){
     if(referenzPunkte.length === 0) return 0;
     let suchName=strName.toUpperCase().replace(/\s/g,'').replace('A','');
@@ -634,19 +692,44 @@ function berechneGoldgriffBKM(meinPunkt, strName){
 function berechnen(isManual = false){
     let kmRaw = document.getElementById("km").value.replace(',','.');
     let km = parseFloat(kmRaw);
-    let a = document.getElementById("autobahn").value;
-    let wachenGrenzen = datenWachen[aktuelleWache].grenzen;
+    let drop = document.getElementById("autobahn");
+    let a = drop.value;
     
     if(isNaN(km)) return;
 
     if(isManual) {
+        // --- MANUELLER WACHEN WECHSEL ---
+        let currentGrenzen = datenWachen[aktuelleWache].grenzen[a];
+        if (currentGrenzen) {
+            let minKm = Math.min(...currentGrenzen);
+            let maxKm = Math.max(...currentGrenzen);
+            
+            if (km < minKm || km > maxKm) {
+                for (let wache in datenWachen) {
+                    let g = datenWachen[wache].grenzen[a];
+                    if (g && km >= Math.min(...g) && km <= Math.max(...g)) {
+                        wechsleWache(wache, true);
+                        drop = document.getElementById("autobahn");
+                        drop.value = a;
+                        updateUI();
+                        updateRichtung();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Gemeinde-Check
         let coords = holeKoordinateFuerKM(a, km);
         if(coords) {
             let pt = turf.point([coords[0], coords[1]]);
             document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
+        } else {
+            document.getElementById("g").innerText = "-";
         }
     }
 
+    let wachenGrenzen = datenWachen[aktuelleWache].grenzen;
     if(wachenGrenzen[a]) {
         let percent = ((km - wachenGrenzen[a][0]) / (wachenGrenzen[a][1] - wachenGrenzen[a][0])) * 100;
         document.getElementById("progress").style.width = Math.max(0, Math.min(100, percent)) + "%";
@@ -744,7 +827,6 @@ function calculateNKMap() {
         let snapped = turf.nearestPointOnLine(best, pt, {units: 'meters'});
         let distAufLinieMeter = snapped.properties.location || 0;
         
-        // Karte auf exakten Linienpunkt verschieben (Snap to Line)
         let snappedCoord = turf.getCoord(snapped);
         map.setView([snappedCoord[1], snappedCoord[0]], map.getZoom(), {animate: true});
         
@@ -760,8 +842,6 @@ function calculateNKMap() {
     }
     
     resDiv.style.display = 'block';
-    
-    // Fadenkreuz mittig halten, auch wenn der div von unten reinrutscht
     setTimeout(() => { map.invalidateSize(); }, 50);
 }
 </script>
