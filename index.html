@@ -27,7 +27,7 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <style>
-/* --- OPTIK & DARK MODE VARIABLEN --- */
+/* --- DARK MODE VARIABLEN --- */
 :root { --bg-body: #f4f6f8; --bg-card: white; --text-main: #333; --text-secondary: #00529b; --input-bg: white; --input-border: #ccc; --table-head: #eee; --result-bg: #f0f4f8; --accent: #007BFF; }
 [data-theme="dark"] { --bg-body: #121212; --bg-card: #1e1e1e; --text-main: #e0e0e0; --text-secondary: #4dabff; --input-bg: #2d2d2d; --input-border: #444; --table-head: #333; --result-bg: #2a2d31; }
 
@@ -86,7 +86,7 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
 .footer-nav a { color: var(--text-secondary); text-decoration: none; font-weight: bold; cursor: pointer; }
 .footer-nav a:hover { text-decoration: underline; }
 
-/* INFOTEXTE (Impressum/Hinweise) */
+/* Impressum/Hinweise */
 .info-text p { margin-bottom: 12px; }
 .info-text a { color: var(--accent); text-decoration: none; }
 .info-text a:hover { text-decoration: underline; }
@@ -306,7 +306,7 @@ function showPage(pageId) {
     }
 }
 
-// LÄDT WIEDER ALLE DATENSÄTZE INKL. ABSCHNITTBAB
+// LÄDT DATENSÄTZE
 Promise.all([
     fetch('Abschnitt.json').then(res=>res.json()),
     fetch('AbschnittBAB.json').then(res=>res.json()),
@@ -358,7 +358,6 @@ function loadWacheSetting() {
     }
 }
 
-// NEU: autobahnToSelect verhindert unendliche UI-Loops beim Wachenwechsel
 function wechsleWache(wacheName, triggerEvent = false, autobahnToSelect = null) {
     aktuelleWache = wacheName;
     document.querySelectorAll('.wache-btn').forEach(btn => {
@@ -391,6 +390,7 @@ function wechsleWache(wacheName, triggerEvent = false, autobahnToSelect = null) 
     }
 
     if (triggerEvent && window.goatcounter) {
+        
         window.goatcounter.count({path: 'wache-' + wacheName, title: 'Wache: ' + wacheName, event: true});
     }
 
@@ -401,6 +401,7 @@ function wechsleWache(wacheName, triggerEvent = false, autobahnToSelect = null) 
     if(typeof updateWzUI === 'function') updateWzUI(); 
 }
 
+// Erzwingt die Suche in NRW 
 function holeKoordinateFuerKM(autobahn, km) {
     if (referenzPunkte.length === 0 || isNaN(km)) return null;
     let suchName = autobahn.toUpperCase().replace(/\s/g, ''); let numOnly = autobahn.replace('A', ''); 
@@ -419,8 +420,28 @@ function holeKoordinateFuerKM(autobahn, km) {
             let pKm = parseFloat(String(kmProp).replace(',', '.'));
             if(!isNaN(pKm)) candidates.push({ pt: p, diff: Math.abs(pKm - km) });
         });
+
         if (candidates.length > 0) {
             candidates.sort((a, b) => a.diff - b.diff);
+
+            // Kandidaten mit ähnlicher Abweichung (1.5)
+            let bestDiff = candidates[0].diff;
+            let topCandidates = candidates.filter(c => c.diff <= bestDiff + 1.5);
+
+            // NRW PRIO
+            if (topCandidates.length > 1) {
+                for (let c of topCandidates) {
+                    let coord = turf.getCoord(turf.centroid(c.pt));
+                    let pt = turf.point(coord);
+                    let gemeinde = findeGemeindeFuerPunkt(pt);
+                    
+                    if (gemeinde !== "Außerhalb NRW" && gemeinde !== "-") {
+                        return coord; // NRW-Punkt gefunden!
+                    }
+                }
+            }
+            
+            // Fallback
             return turf.getCoord(turf.centroid(candidates[0].pt)); 
         }
     }
@@ -485,19 +506,15 @@ function updateUI() {
     }
 }
 
-// NEU: Zweistufiger Check, um Punkte aufzunehmen, die wegen Turf.js Präzision "aus dem Polygon fallen"
 function findeGemeindeFuerPunkt(pt) {
     if (datenGemeinden.length === 0) return "-";
     
-    // Stufe 1: Normaler Check
     for (let f of datenGemeinden) {
         try { 
             if (turf.booleanPointInPolygon(pt, f)) return f.properties.GEN || f.properties.GN || f.properties.NAME || "Unbekannt"; 
         } catch(e) {}
     }
     
-    // Stufe 2: Fallback! Wenn der Punkt auf 0.0001mm genau auf der Grenze liegt, lehnt Turf ihn ab.
-    // Wir erzeugen einen winzigen 50-Meter-Puffer-Kreis und prüfen, ob der Kreis eine Gemeinde schneidet.
     try {
         let buffered = turf.buffer(pt, 0.05, {units: 'kilometers'}); 
         for (let f of datenGemeinden) {
@@ -729,7 +746,6 @@ function berechneGoldgriffBKM(meinPunkt, strName){
     return 0;
 }
 
-// NEU: Gemeinde berechnet sich jetzt flüssig während des Tippens, Wachenwechsel wartet auf "isManual = true"
 function berechnen(isManual = false){
     let kmRaw = document.getElementById("km").value.replace(',','.');
     let km = parseFloat(kmRaw);
@@ -744,7 +760,6 @@ function berechnen(isManual = false){
         return;
     }
 
-    // Wachenwechsel Logik wartet auf "Enter" oder "Klick aus dem Feld"
     if(isManual) {
         let currentGrenzen = datenWachen[aktuelleWache].grenzen[a];
         if (currentGrenzen) {
@@ -756,14 +771,13 @@ function berechnen(isManual = false){
                     let g = datenWachen[wache].grenzen[a];
                     if (g && km >= Math.min(...g) && km <= Math.max(...g)) {
                         wechsleWache(wache, true, a);
-                        return; // wechsleWache übernimmt ab hier alles neu!
+                        return;
                     }
                 }
             }
         }
     }
 
-    // Gemeinde immer live berechnen
     let coords = holeKoordinateFuerKM(a, km);
     if(coords) {
         let pt = turf.point([coords[0], coords[1]]);
