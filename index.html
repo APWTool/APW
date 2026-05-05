@@ -46,7 +46,6 @@ button { background: var(--accent); color: white; border: none; cursor: pointer;
 button:hover { filter: brightness(1.1); }
 button.active { background: #dc3545; }
 
-/* Einheitliche Action-Buttons */
 .btn-action { background: #6c757d; margin-top: 8px; }
 .btn-action:hover { filter: brightness(1.1); }
 
@@ -56,6 +55,9 @@ table { width: 100%; margin-top: 0; border-collapse: collapse; font-size: 0.85em
 th, td { border: 1px solid var(--input-border); padding: 8px 5px; text-align: left; vertical-align: middle; }
 th { background: var(--table-head); }
 td a { text-decoration: none; color: var(--accent); font-weight: bold; } 
+
+.wz-highlight td { background-color: #ffcccc !important; color: #900 !important; font-weight: bold; }
+[data-theme="dark"] .wz-highlight td { background-color: #5a1a1a !important; color: #ff9999 !important; }
 
 .direction-arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--result-bg); border-radius: 6px; padding: 8px 4px; font-weight: bold; color: var(--text-secondary); font-size: 0.8em; letter-spacing: 1px; box-sizing: border-box; display: none; }
 .dir-text { writing-mode: vertical-rl; text-orientation: mixed; margin: 6px 0; }
@@ -83,6 +85,13 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
 .footer-nav { display: flex; justify-content: center; gap: 20px; font-size: 0.85em; margin-top: 5px; margin-bottom: 20px; }
 .footer-nav a { color: var(--text-secondary); text-decoration: none; font-weight: bold; cursor: pointer; }
 .footer-nav a:hover { text-decoration: underline; }
+
+/* INFOTEXTE (Impressum/Hinweise) */
+.info-text p { margin-bottom: 12px; }
+.info-text a { color: var(--accent); text-decoration: none; }
+.info-text a:hover { text-decoration: underline; }
+.info-text ul { padding-left: 20px; margin-top: 5px; }
+.info-text li { margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -117,14 +126,13 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
     </div>
     
     <select id="autobahn" onchange="manuellerFokus = this.value; updateUI(); updateRichtung(); berechnen(true);"></select>
-    <input id="km" placeholder="Kilometer eingeben" inputmode="decimal" oninput="berechnen(true)">
+    <input id="km" placeholder="Kilometer manuell eingeben" inputmode="decimal" oninput="berechnen(true)">
 
     <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
     <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
 
-    <button onclick="berechnen(true)">Manuell Berechnen</button>
     <button class="btn-action" onclick="openMap()">📝 NK auf Karte erfassen</button>
-    <button class="btn-action" onclick="showPage('page-wegzeit')">⏱️ Weg-Zeit Rechner</button>
+    <button class="btn-action" onclick="showPage('page-wegzeit')">⏱️ Weg-Zeit Live Tracker</button>
 
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
@@ -152,49 +160,87 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
 
 <!-- WEG-ZEIT RECHNER SEITE -->
 <div class="card" id="page-wegzeit" style="display:none;">
-    <h2>Weg-Zeit Rechner</h2>
-    <input id="start_km" placeholder="Start km" inputmode="decimal">
-    <input id="speed" placeholder="Geschwindigkeit (km/h)" inputmode="numeric">
-    <select id="richtung"></select>
-    <input id="zeit" placeholder="Zeit (h)" inputmode="decimal">
-    <button onclick="berechneWeg()">Berechnen</button>
-
-    <div class="result">
-        <p><strong>Ziel km:</strong> <span id="ziel_km">-</span></p>
-        <p><strong>Nächste AS:</strong> <span id="next_as">-</span></p>
+    <h2>Live Weg-Zeit Tracker</h2>
+    
+    <div class="wache-buttons">
+        <button class="wache-btn" data-wache="Hilden" onclick="wechsleWache('Hilden', true)">Hilden</button>
+        <button class="wache-btn" data-wache="Mülheim" onclick="wechsleWache('Mülheim', true)">Mülheim</button>
+        <button class="wache-btn" data-wache="Hünxe" onclick="wechsleWache('Hünxe', true)">Hünxe</button>
+        <button class="wache-btn" data-wache="Moers" onclick="wechsleWache('Moers', true)">Moers</button>
+        <button class="wache-btn" data-wache="Gladbach" onclick="wechsleWache('Gladbach', true)">Gladbach</button>
     </div>
+
+    <select id="wz_autobahn" onchange="updateWzUI()"></select>
+    <select id="wz_richtung"></select>
+    <input id="start_km" placeholder="Letzter bekannter KM" inputmode="decimal">
+    
+    <div style="margin-top: 10px; padding: 10px; border: 1px solid var(--input-border); border-radius: 6px; background: var(--bg-body); font-size: 0.9em;">
+        <label style="display:block; margin-bottom: 8px; font-weight:bold;">Geschwindigkeit:</label>
+        <label style="display:inline-block; margin-right: 15px; cursor:pointer;"><input type="radio" name="speed_mode" value="manual" checked onchange="toggleSpeedMode()"> Manuell</label>
+        <label style="display:inline-block; cursor:pointer;"><input type="radio" name="speed_mode" value="live" onchange="toggleSpeedMode()"> Live Traffic (Maps)</label>
+        <input id="speed" placeholder="Eingabe in km/h" inputmode="numeric" style="margin-top: 8px;">
+    </div>
+    
+    <button class="btn-secondary" id="btn_wz_start" onclick="startWegZeit()">▶ Start Tracking</button>
+    <button class="btn-action" id="btn_wz_stop" onclick="stopWegZeit()" style="display:none; background:#dc3545;">⏹ Stop Tracking</button>
+
+    <div class="result" id="wz_result_box" style="display:none; border-left-color: #dc3545;">
+        <p><strong>Aktueller Fahrzeug-KM:</strong> <span id="wz_aktuell_km" style="font-size:1.2em; color:#dc3545; font-weight:bold;">-</span></p>
+        <p><strong>Verstrichene Zeit:</strong> <span id="wz_zeit">0:00</span> min</p>
+    </div>
+
+    <div class="table-container">
+        <div class="table-wrapper">
+            <table>
+                <thead><tr><th>Typ</th><th>Anschlussstelle</th><th>Km</th></tr></thead>
+                <tbody id="wz_liste"></tbody>
+            </table>
+        </div>
+    </div>
+    
     <button class="btn-action" onclick="showPage('page-main')">Zurück zur Hauptseite</button>
 </div>
 
 <!-- IMPRESSUM SEITE -->
 <div class="card" id="page-impressum" style="display:none;">
     <h2>Impressum</h2>
-    <div style="font-size: 0.9em; line-height: 1.5;">
-        <p><strong>Angaben gemäß DDG:</strong><br>
-        [Dein Name / Deine Behörde]<br>
-        [Deine Adresse]<br>
-        [Kontakt-E-Mail]</p>
+    <div class="info-text" style="font-size: 0.9em; line-height: 1.5;">
+        <p><strong>Angaben gemäß Digitale-Dienste-Gesetz (DDG):</strong><br>
+        Patrick Stahlberg, PK<br>
+        PP Düsseldorf<br>
+        Dir.V VI3 APW Hilden<br>
+        Zum Forsthaus 16, 40724 Hilden<br>
+        <a href="mailto:patrick.stahlberg@polizei.nrw.de">patrick.stahlberg@polizei.nrw.de</a></p>
+        
         <p><strong>Datenschutzhinweis:</strong><br>
-        Diese App nutzt GPS zur Berechnung lokaler Straßenkilometer. Es werden grundlegende, anonyme Aufrufstatistiken über GoatCounter erhoben. Personenbezogene Daten werden nicht gespeichert.</p>
+        Diese Applikation nutzt die GPS-Funktion des Endgerätes ausschließlich zur lokalen Berechnung von Straßenparametern. Es werden grundlegende, vollständig anonymisierte Aufrufstatistiken über GoatCounter (ohne Einsatz von Cookies) erhoben. Personenbezogene Daten, Bewegungsprofile oder IP-Adressen werden von dieser App nicht erfasst oder gespeichert.</p>
     </div>
     <button class="btn-action" onclick="showPage('page-main')">Zurück</button>
 </div>
 
-<!-- HINWEISE SEITE -->
+<!-- HINWEISE & QUELLEN SEITE -->
 <div class="card" id="page-hinweise" style="display:none;">
-    <h2>Hinweise</h2>
-    <div style="font-size: 0.9em; line-height: 1.5;">
-        <p><strong>Datenquellen:</strong><br>
-        Die Geo-Daten basieren auf OpenData Straßen.NRW und wurden mithilfe von Turf.js sowie Leaflet.js verarbeitet.</p>
+    <h2>Hinweise & Quellen</h2>
+    <div class="info-text" style="font-size: 0.9em; line-height: 1.5;">
         <p><strong>Haftungsausschluss:</strong><br>
-        Alle Angaben ohne Gewähr. Die berechneten Netzknoten und Betriebskilometer dienen lediglich der Orientierung.</p>
+        Alle in dieser Anwendung berechneten Angaben erfolgen ohne Gewähr. Die ermittelten Netzknoten, Betriebskilometer und Zuständigkeiten dienen ausschließlich der schnellen dienstlichen Orientierung.</p>
+        
+        <p><strong>Quellenverzeichnis & Lizenzen:</strong></p>
+        <ul>
+            <li><strong>Grenzübergänge, Kilometrierung BAB:</strong> Eigenrecherche <a href="https://www.bkg.bund.de" target="_blank">BKG</a>; © Bundesamt für Kartographie und Geodäsie. <br> © <a href="https://www.bkg.bund.de" target="_blank">BKG</a> (2024) <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank">dl-de/by-2-0</a>, Datenquellen: <a href="https://sgx.geodatenzentrum.de/web_public/gdz/datenquellen/datenquellen_poi-open.pdf" target="_blank">Link (PDF)</a>.</li>
+            <li><strong>Straßennetz & Kilometerdaten (NWSIB):</strong> © Landesbetrieb Straßenbau Nordrhein-Westfalen (Straßen.NRW), bereitgestellt über das Portal Open.NRW. Genutzt unter der <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank">Datenlizenz Deutschland – Namensnennung – Version 2.0 (dl-de/by-2-0)</a>.</li>
+            <li><strong>Verwaltungsgrenzen (Gemeinden):</strong> © Geobasis NRW. Genutzt unter der <a href="https://www.govdata.de/dl-de/by-2-0" target="_blank">Datenlizenz Deutschland – Namensnennung – Version 2.0 (dl-de/by-2-0)</a>.</li>
+            <li><strong>Kartenmaterial (Straßen):</strong> © OpenStreetMap-Mitwirkende (ODbL).</li>
+            <li><strong>Kartenmaterial (Satellit):</strong> © Esri, Maxar, Earthstar Geographics, und die GIS-User-Community.</li>
+            <li><strong>Technologie:</strong> Diese Anwendung nutzt die Open-Source-Bibliotheken Turf.js (MIT-Lizenz) und Leaflet.js (BSD-Lizenz).</li>
+        </ul>
     </div>
     <button class="btn-action" onclick="showPage('page-main')">Zurück</button>
 </div>
 
 <div class="footer-nav" id="footer-nav">
     <a onclick="showPage('page-impressum')">Impressum</a>
-    <a onclick="showPage('page-hinweise')">Hinweise</a>
+    <a onclick="showPage('page-hinweise')">Quellen & Hinweise</a>
 </div>
 
 <script>
@@ -219,11 +265,18 @@ const meistereien = {
 };
 
 let aktuelleWache = "Hilden"; 
-let datenLand=[], datenBAB=[], referenzPunkte=[], datenGemeinden=[];
+let datenLand=[], referenzPunkte=[], datenGemeinden=[];
 let letzteLat = 0, letzteLon = 0, letzteAcc = 0; 
 let bkmHistorie = []; 
 let manuellerFokus = null;
 let map = null;
+
+// Weg-Zeit Variablen
+let wzInterval = null;
+let wzStartTime = 0;
+let wzStartKm = 0;
+let wzSpeed = 0;
+let wzDir = 1;
 
 if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.documentElement.setAttribute("data-theme", "dark");
@@ -251,14 +304,13 @@ function showPage(pageId) {
     }
 }
 
+// ACHTUNG: AbschnittBAB.json wurde entfernt, da überflüssig!
 Promise.all([
     fetch('Abschnitt.json').then(res=>res.json()),
-    fetch('AbschnittBAB.json').then(res=>res.json()),
     fetch('BABKM.json').then(res=>res.json()),
     fetch('Gemeinden.json').then(res=>res.json())   
-]).then(([land, bab, punkte, gem])=>{
+]).then(([land, punkte, gem])=>{
     datenLand = extrahiere(land, true);
-    datenBAB = extrahiere(bab, true);
     referenzPunkte = extrahiere(punkte, false);
     datenGemeinden = extrahiereGemeinden(gem); 
     document.getElementById("gps-info").innerHTML='<span style="color:green; font-weight:bold;">✅ Geo-Datenbank geladen</span>';
@@ -309,12 +361,20 @@ function wechsleWache(wacheName, triggerEvent = false) {
         else btn.classList.remove('active-wache');
     });
 
-    let drop = document.getElementById("autobahn"); drop.innerHTML = "";
+    let dropMain = document.getElementById("autobahn"); 
+    let dropWz = document.getElementById("wz_autobahn"); 
+    dropMain.innerHTML = ""; 
+    if(dropWz) dropWz.innerHTML = "";
+
     let autobahnen = Object.keys(datenWachen[aktuelleWache].grenzen || {});
     if(autobahnen.length === 0) {
-        let opt = document.createElement("option"); opt.text = "Keine Daten hinterlegt"; drop.appendChild(opt);
+        dropMain.add(new Option("Keine Daten", ""));
+        if(dropWz) dropWz.add(new Option("Keine Daten", ""));
     } else {
-        autobahnen.forEach(a => { let opt = document.createElement("option"); opt.value = a; opt.textContent = a; drop.appendChild(opt); });
+        autobahnen.forEach(a => { 
+            dropMain.add(new Option(a, a)); 
+            if(dropWz) dropWz.add(new Option(a, a)); 
+        });
     }
     
     if (document.getElementById('saveWache').checked) {
@@ -329,6 +389,8 @@ function wechsleWache(wacheName, triggerEvent = false) {
     updateUI();
     updateRichtung();
     berechnen(true);
+    
+    if(typeof updateWzUI === 'function') updateWzUI(); 
 }
 
 function holeKoordinateFuerKM(autobahn, km) {
@@ -390,7 +452,6 @@ function updateUI() {
             let baseKm = parseFloat(kmRaw.split('-')[0].replace(',', '.'));
             let nameHtml = name;
 
-            // Intelligenter Google Maps Link mit exakten GPS Koordinaten
             if (!isNaN(baseKm)) {
                 let coords = holeKoordinateFuerKM(a, baseKm);
                 if (coords) {
@@ -483,7 +544,7 @@ async function verarbeiteGPS(lat, lon, acc){
     
     document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
     
-    let alleDaten = datenBAB.concat(datenLand);
+    let alleDaten = datenLand;
 
     let babHits = findeKandidaten(alleDaten, pt, null, 2.0).filter(k => k.name.startsWith("A"));
     let bundHits = findeKandidaten(alleDaten, pt, "BUND", 2.0);
@@ -500,7 +561,6 @@ async function verarbeiteGPS(lat, lon, acc){
     });
 
     if(uniqueKandidaten.length > 0) {
-        // Smart Sort: Immer Autobahnen zuerst, dann nach Distanz
         let sortKandidaten = [...uniqueKandidaten];
         sortKandidaten.sort((a, b) => {
             let aIsA = a.name.startsWith("A");
@@ -521,12 +581,10 @@ async function verarbeiteGPS(lat, lon, acc){
         const strName = sel.name; 
         let htmlOutput = "";
         
-        // Genauigkeits & Distanz Anzeige
         let accStr = `±${Math.round(acc)}m`;
         let snapDistStr = `${Math.round(sel.dist * 1000)}m`;
         let techInfo = `<div style="margin-top:6px; font-size:0.85em; color:var(--text-secondary);">Genauigkeit: <b>${accStr}</b> | Abstand zur Achse: <b>${snapDistStr}</b></div>`;
 
-        // --- AUTO-WACHEN WECHSEL BEI GPS ---
         if (strName.startsWith("A")) {
             let needsSwitch = true;
             let currentGrenzen = datenWachen[aktuelleWache].grenzen[strName];
@@ -552,7 +610,6 @@ async function verarbeiteGPS(lat, lon, acc){
             }
         }
 
-        // --- AUTOBAHN ERKANNT ---
         if(Array.from(document.getElementById("autobahn").options).some(o=>o.value===strName)){
             let bkm = berechneGoldgriffBKM(pt, strName);
             document.getElementById("km").value = bkm > 0 ? bkm.toFixed(3).replace('.',',') : "";
@@ -582,7 +639,6 @@ async function verarbeiteGPS(lat, lon, acc){
             htmlOutput = `<span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige} ${techInfo}`;
 
         } else {
-            // --- LANDSTRASSE ERKANNT ---
             let abschnitt = props.ABSNR || "Unbekannt";
             let ast = props.ABSAST && props.ABSAST !== "" ? ` (${props.ABSAST})` : "";
             let snapped = turf.nearestPointOnLine(sel.feature, pt);
@@ -598,7 +654,6 @@ async function verarbeiteGPS(lat, lon, acc){
             document.getElementById("liste").innerHTML="";
         }
 
-        // --- KREUZUNGS-UI ---
         let andereImKreuz = sortKandidaten.filter(k => k.name !== sel.name && k.dist <= 0.8);
         if (andereImKreuz.length > 0) {
             htmlOutput += `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--input-border); text-align: left;">`;
@@ -725,33 +780,37 @@ function berechnen(isManual = false){
     document.getElementById("m_address").innerText = addr;
 }
 
-function berechneWeg(){
-    let km = parseFloat(document.getElementById("start_km").value.replace(',','.'));
-    let speed = parseFloat(document.getElementById("speed").value);
-    let time = parseFloat(document.getElementById("zeit").value);
-    let dir = document.getElementById("richtung").value;
-    let a = document.getElementById("autobahn").value;
+function holeNKHtml(props, distMeter = 0, isMap = false) {
+    let vnk = props.VNK || props.Vnk || props.NETZKNOTEN_VON || "-";
+    let vb = props.VB || props.Vb || props.KNOTEN_VON_BUCHSTABE || "-";
+    let bnk = props.BNK || props.Bnk || props.NETZKNOTEN_NACH || "-";
+    let bb = props.BB || props.Bb || props.KNOTEN_NACH_BUCHSTABE || "-";
     
-    let wachenListen = datenWachen[aktuelleWache].listen || {};
-    
-    if(isNaN(km)||isNaN(speed)||isNaN(time)||!wachenListen[a]) return;
-    
-    let ziel = dir.includes("(+)") ? km + (speed*time) : km - (speed*time);
-    let next="-", bestDiff=Infinity;
-    
-    wachenListen[a].forEach(e=>{
-        if(e[0] !== "AS" && e[0] !== "AK" && e[0] !== "AD") return;
-        let val = parseFloat(e[2].replace(',','.'));
-        if(dir.includes("(+)") && val >= ziel){
-            if(val-ziel < bestDiff) { bestDiff=val-ziel; next=e[1]; }
-        }
-        if(dir.includes("(-)") && val <= ziel){
-            if(ziel-val < bestDiff) { bestDiff=ziel-val; next=e[1]; }
-        }
-    });
-    
-    document.getElementById("ziel_km").innerText = ziel.toFixed(3).replace('.',',');
-    document.getElementById("next_as").innerText = next;
+    let rawAbs = props.ABSNr || props.ABSNR || props.ABS || props.ABS_NUMMER || "";
+    if ((vnk === "-" || bnk === "-") && rawAbs.length >= 15) {
+        let absStr = String(rawAbs).padEnd(16, ' ');
+        vnk = absStr.substring(0, 7).trim() || "-";
+        vb = absStr.substring(7, 8).trim() || "-";
+        bnk = absStr.substring(8, 15).trim() || "-";
+        bb = absStr.substring(15, 16).trim() || "-";
+    }
+
+    let stationBase = parseFloat(String(props.STATANF || props.StatAnf || props.STATION || "0").replace(',', '.'));
+    let stationKM = (stationBase + distMeter) / 1000;
+
+    let debugInfo = "";
+    if (isMap) debugInfo = `<div style="font-size:0.8em; color:var(--text-secondary); margin-bottom:5px;">Snapping auf Abschnitt: <b>${rawAbs || "Unbekannt"}</b></div>`;
+
+    return `
+        ${debugInfo}
+        <table style="width:100%; border:none; margin:0; font-family:monospace; font-size:1em;">
+            <tr><td style="border:none; padding:3px 0;">von Netzknoten A:</td><td style="border:none; padding:3px 0; text-align:right;"><b>${vnk}</b></td></tr>
+            <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${vb}</b></td></tr>
+            <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">nach B:</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${bnk}</b></td></tr>
+            <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${bb}</b></td></tr>
+            <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">Station (km):</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${stationKM.toFixed(3).replace('.',',')}</b></td></tr>
+        </table>
+    `;
 }
 
 function openMap() {
@@ -786,7 +845,7 @@ function closeMap() { document.getElementById('map-overlay').style.display = 'no
 function calculateNKMap() {
     let pos = map.getCenter(); 
     let pt = turf.point([pos.lng, pos.lat]);
-    let alleDaten = datenBAB.concat(datenLand);
+    let alleDaten = datenLand;
     let best = null, minDist = Infinity;
 
     alleDaten.forEach(f => {
@@ -803,11 +862,12 @@ function calculateNKMap() {
         let strName = props.STRBEZ || props.StrBez || (strKl + (props.STRNR || props.StrNr || ""));
         
         let snapped = turf.nearestPointOnLine(best, pt, {units: 'meters'});
+        let distAufLinieMeter = snapped.properties.location || 0;
         
         let snappedCoord = turf.getCoord(snapped);
         map.setView([snappedCoord[1], snappedCoord[0]], map.getZoom(), {animate: true});
         
-        let htmlZettel = holeNKHtml(props, 0, true); 
+        let htmlZettel = holeNKHtml(props, distAufLinieMeter, true); 
         
         resDiv.innerHTML = `<div class="nk-box" style="margin-top:0;">
             <strong style="color:var(--text-secondary);">📍 ${strName} | Fang-Abstand: ${(minDist*1000).toFixed(0)}m</strong><br>
@@ -820,6 +880,108 @@ function calculateNKMap() {
     
     resDiv.style.display = 'block';
     setTimeout(() => { map.invalidateSize(); }, 50);
+}
+
+// --- WEG ZEIT RECHNER FUNKTIONEN ---
+
+function toggleSpeedMode() {
+    let mode = document.querySelector('input[name="speed_mode"]:checked').value;
+    if(mode === 'live') {
+        alert("Hinweis: Echte Google Maps Live-Verkehrsdaten erfordern eine kostenpflichtige API-Anbindung (Google Directions API). Dies kann clientseitig nicht verarbeitet werden. Die Funktion dient hier als Platzhalter und nutzt vorerst einen Schätzwert von 120 km/h.");
+        document.getElementById('speed').value = "120";
+        document.getElementById('speed').disabled = true;
+    } else {
+        document.getElementById('speed').value = "";
+        document.getElementById('speed').disabled = false;
+    }
+}
+
+function updateWzUI() {
+    let a = document.getElementById("wz_autobahn").value;
+    if(!a) return;
+    let wachenRichtungen = datenWachen[aktuelleWache].richtungen;
+    let wachenListen = datenWachen[aktuelleWache].listen || {};
+    
+    let sel = document.getElementById("wz_richtung");
+    sel.innerHTML = "";
+    if(wachenRichtungen[a]) {
+        wachenRichtungen[a].forEach(r => sel.add(new Option(r, r)));
+    }
+    
+    let tbody = document.getElementById("wz_liste");
+    tbody.innerHTML = "";
+    if(wachenListen[a]) {
+        wachenListen[a].forEach(e => {
+            let tr = document.createElement("tr");
+            tr.innerHTML = `<td>${e[0]}</td><td>${e[1]}</td><td>${e[2]}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+function startWegZeit() {
+    wzStartKm = parseFloat(document.getElementById("start_km").value.replace(',','.'));
+    wzSpeed = parseFloat(document.getElementById("speed").value);
+    let dirStr = document.getElementById("wz_richtung").value;
+    
+    if(isNaN(wzStartKm) || isNaN(wzSpeed)) {
+        alert("Bitte Start-KM und Geschwindigkeit korrekt eingeben.");
+        return;
+    }
+    
+    wzDir = dirStr.includes("(+)") ? 1 : -1;
+    wzStartTime = Date.now();
+    
+    document.getElementById("btn_wz_start").style.display = "none";
+    document.getElementById("btn_wz_stop").style.display = "block";
+    document.getElementById("wz_result_box").style.display = "block";
+    
+    if(wzInterval) clearInterval(wzInterval);
+    wzInterval = setInterval(tickWegZeit, 1000);
+    tickWegZeit(); 
+}
+
+function stopWegZeit() {
+    if(wzInterval) clearInterval(wzInterval);
+    document.getElementById("btn_wz_start").style.display = "block";
+    document.getElementById("btn_wz_stop").style.display = "none";
+}
+
+function tickWegZeit() {
+    let elapsedMs = Date.now() - wzStartTime;
+    let elapsedHours = elapsedMs / (1000 * 60 * 60);
+    let elapsedMin = Math.floor(elapsedMs / (1000 * 60));
+    let elapsedSec = Math.floor((elapsedMs / 1000) % 60);
+    
+    let currentKm = wzStartKm + (wzDir * (wzSpeed * elapsedHours));
+    
+    document.getElementById("wz_aktuell_km").innerText = currentKm.toFixed(3).replace('.',',');
+    document.getElementById("wz_zeit").innerText = `${elapsedMin}:${elapsedSec.toString().padStart(2, '0')}`;
+    
+    highlightWzList(currentKm);
+}
+
+function highlightWzList(currentKm) {
+    let rows = document.querySelectorAll("#wz_liste tr");
+    let closestRow = null;
+    let minDiff = Infinity;
+    
+    rows.forEach(row => {
+        row.classList.remove('wz-highlight');
+        let kmCell = row.cells[2].innerText;
+        let rowKm = parseFloat(kmCell.replace(',', '.'));
+        if(!isNaN(rowKm)) {
+            let diff = Math.abs(currentKm - rowKm);
+            if(diff < minDiff) {
+                minDiff = diff;
+                closestRow = row;
+            }
+        }
+    });
+    
+    if(closestRow) {
+        closestRow.classList.add('wz-highlight');
+    }
 }
 </script>
 </body>
