@@ -45,8 +45,10 @@ select, input, button { width: 100%; margin-top: 10px; padding: 12px; border-rad
 button { background: var(--accent); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
 button:hover { filter: brightness(1.1); }
 button.active { background: #dc3545; }
-.btn-secondary { background: #28a745; margin-top: 8px; }
-.btn-tertiary { background: #17a2b8; margin-top: 8px; }
+
+/* Einheitliche Action-Buttons */
+.btn-action { background: #6c757d; margin-top: 8px; }
+.btn-action:hover { filter: brightness(1.1); }
 
 .table-container { display: flex; align-items: stretch; gap: 6px; margin-top: 15px; }
 .table-wrapper { flex: 1; min-width: 0; overflow-x: auto; }
@@ -113,12 +115,6 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <button class="wache-btn" data-wache="Moers" onclick="wechsleWache('Moers', true)">Moers</button>
         <button class="wache-btn" data-wache="Gladbach" onclick="wechsleWache('Gladbach', true)">Gladbach</button>
     </div>
-
-    <select id="prioMode" onchange="manuellerFokus = null; if(watchId) { navigator.geolocation.getCurrentPosition(p => verarbeiteGPS(p.coords.latitude, p.coords.longitude, p.coords.accuracy)); }">
-        <option value="bab">🛣️ Priorität: Autobahn</option>
-        <option value="bund">🚙 Priorität: Bundesstraße</option>
-        <option value="land">🌲 Priorität: Landstraße</option>
-    </select>
     
     <select id="autobahn" onchange="manuellerFokus = this.value; updateUI(); updateRichtung(); berechnen(true);"></select>
     <input id="km" placeholder="Kilometer eingeben" inputmode="decimal" oninput="berechnen(true)">
@@ -127,8 +123,8 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
     <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
 
     <button onclick="berechnen(true)">Manuell Berechnen</button>
-    <button class="btn-secondary" onclick="openMap()">📝 NK auf Karte erfassen</button>
-    <button class="btn-tertiary" onclick="showPage('page-wegzeit')">⏱️ Weg-Zeit Rechner</button>
+    <button class="btn-action" onclick="openMap()">📝 NK auf Karte erfassen</button>
+    <button class="btn-action" onclick="showPage('page-wegzeit')">⏱️ Weg-Zeit Rechner</button>
 
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
@@ -167,7 +163,7 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <p><strong>Ziel km:</strong> <span id="ziel_km">-</span></p>
         <p><strong>Nächste AS:</strong> <span id="next_as">-</span></p>
     </div>
-    <button class="btn-secondary" onclick="showPage('page-main')">Zurück zur Hauptseite</button>
+    <button class="btn-action" onclick="showPage('page-main')">Zurück zur Hauptseite</button>
 </div>
 
 <!-- IMPRESSUM SEITE -->
@@ -181,7 +177,7 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <p><strong>Datenschutzhinweis:</strong><br>
         Diese App nutzt GPS zur Berechnung lokaler Straßenkilometer. Es werden grundlegende, anonyme Aufrufstatistiken über GoatCounter erhoben. Personenbezogene Daten werden nicht gespeichert.</p>
     </div>
-    <button class="btn-secondary" onclick="showPage('page-main')">Zurück</button>
+    <button class="btn-action" onclick="showPage('page-main')">Zurück</button>
 </div>
 
 <!-- HINWEISE SEITE -->
@@ -193,7 +189,7 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <p><strong>Haftungsausschluss:</strong><br>
         Alle Angaben ohne Gewähr. Die berechneten Netzknoten und Betriebskilometer dienen lediglich der Orientierung.</p>
     </div>
-    <button class="btn-secondary" onclick="showPage('page-main')">Zurück</button>
+    <button class="btn-action" onclick="showPage('page-main')">Zurück</button>
 </div>
 
 <div class="footer-nav" id="footer-nav">
@@ -391,11 +387,21 @@ function updateUI() {
     if(wachenListen[a]) {
         wachenListen[a].forEach(e => {
             let typ = e[0]; let name = e[1]; let kmRaw = e[2]; let rf = e[3]; 
-            
-            // Intelligenter Google Maps Link statt fehleranfälliger GPS-Snap!
-            let searchQuery = encodeURIComponent(`${a} ${typ} ${name}`);
-            let mapLink = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
-            let nameHtml = `<a href="${mapLink}" target="_blank">${name}</a>`;
+            let baseKm = parseFloat(kmRaw.split('-')[0].replace(',', '.'));
+            let nameHtml = name;
+
+            // Intelligenter Google Maps Link mit exakten GPS Koordinaten
+            if (!isNaN(baseKm)) {
+                let coords = holeKoordinateFuerKM(a, baseKm);
+                if (coords) {
+                    let mapLink = `https://www.google.com/maps/search/?api=1&query=${coords[1]},${coords[0]}`;
+                    nameHtml = `<a href="${mapLink}" target="_blank">${name}</a>`;
+                } else {
+                    let searchQuery = encodeURIComponent(`${a} ${typ} ${name}`);
+                    let mapLink = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+                    nameHtml = `<a href="${mapLink}" target="_blank">${name}</a>`;
+                }
+            }
 
             if (rf) {
                 nameHtml += `<br><span style="font-size:0.85em; color:var(--text-secondary); font-weight:normal;">${rf}</span>`;
@@ -427,39 +433,6 @@ function findeGemeindeFuerPunkt(pt) {
         } catch(e) {}
     }
     return "Außerhalb NRW";
-}
-
-function holeNKHtml(props, distMeter = 0, isMap = false) {
-    let vnk = props.VNK || props.Vnk || props.NETZKNOTEN_VON || "-";
-    let vb = props.VB || props.Vb || props.KNOTEN_VON_BUCHSTABE || "-";
-    let bnk = props.BNK || props.Bnk || props.NETZKNOTEN_NACH || "-";
-    let bb = props.BB || props.Bb || props.KNOTEN_NACH_BUCHSTABE || "-";
-    
-    let rawAbs = props.ABSNr || props.ABSNR || props.ABS || props.ABS_NUMMER || "";
-    if ((vnk === "-" || bnk === "-") && rawAbs.length >= 15) {
-        let absStr = String(rawAbs).padEnd(16, ' ');
-        vnk = absStr.substring(0, 7).trim() || "-";
-        vb = absStr.substring(7, 8).trim() || "-";
-        bnk = absStr.substring(8, 15).trim() || "-";
-        bb = absStr.substring(15, 16).trim() || "-";
-    }
-
-    let stationBase = parseFloat(String(props.STATANF || props.StatAnf || props.STATION || "0").replace(',', '.'));
-    let stationKM = (stationBase + distMeter) / 1000;
-
-    let debugInfo = "";
-    if (isMap) debugInfo = `<div style="font-size:0.8em; color:var(--text-secondary); margin-bottom:5px;">Snapping auf Abschnitt: <b>${rawAbs || "Unbekannt"}</b></div>`;
-
-    return `
-        ${debugInfo}
-        <table style="width:100%; border:none; margin:0; font-family:monospace; font-size:1em;">
-            <tr><td style="border:none; padding:3px 0;">von Netzknoten A:</td><td style="border:none; padding:3px 0; text-align:right;"><b>${vnk}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${vb}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">nach B:</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${bnk}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${bb}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">Station (km):</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${stationKM.toFixed(3).replace('.',',')}</b></td></tr>
-        </table>
-    `;
 }
 
 let watchId=null;
@@ -507,7 +480,6 @@ function findeKandidaten(liste, pt, filter, maxDist){
 async function verarbeiteGPS(lat, lon, acc){
     letzteLat = lat; letzteLon = lon; letzteAcc = acc;
     const pt = turf.point([lon, lat]);
-    let prio = document.getElementById("prioMode").value;
     
     document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
     
@@ -528,25 +500,32 @@ async function verarbeiteGPS(lat, lon, acc){
     });
 
     if(uniqueKandidaten.length > 0) {
-        let sel = null;
-        let nahBereich = uniqueKandidaten.filter(k => k.dist <= 0.8); 
+        // Smart Sort: Immer Autobahnen zuerst, dann nach Distanz
+        let sortKandidaten = [...uniqueKandidaten];
+        sortKandidaten.sort((a, b) => {
+            let aIsA = a.name.startsWith("A");
+            let bIsA = b.name.startsWith("A");
+            if (aIsA && !bIsA) return -1;
+            if (!aIsA && bIsA) return 1;
+            return a.dist - b.dist;
+        });
 
+        let sel = null;
         if (manuellerFokus) {
-            let focusMatch = nahBereich.find(k => k.name === manuellerFokus);
+            let focusMatch = sortKandidaten.find(k => k.name === manuellerFokus);
             if (focusMatch) sel = focusMatch; 
         }
-
-        if (!sel) {
-            if (prio === "bab") sel = babHits[0] || bundHits[0] || landHits[0];
-            else if (prio === "bund") sel = bundHits[0] || babHits[0] || landHits[0];
-            else sel = landHits[0] || bundHits[0] || babHits[0];
-        }
+        if (!sel) sel = sortKandidaten[0];
 
         const props = sel.feature.properties || {};
         const strName = sel.name; 
-        const drop = document.getElementById("autobahn");
         let htmlOutput = "";
         
+        // Genauigkeits & Distanz Anzeige
+        let accStr = `±${Math.round(acc)}m`;
+        let snapDistStr = `${Math.round(sel.dist * 1000)}m`;
+        let techInfo = `<div style="margin-top:6px; font-size:0.85em; color:var(--text-secondary);">Genauigkeit: <b>${accStr}</b> | Abstand zur Achse: <b>${snapDistStr}</b></div>`;
+
         // --- AUTO-WACHEN WECHSEL BEI GPS ---
         if (strName.startsWith("A")) {
             let needsSwitch = true;
@@ -600,7 +579,7 @@ async function verarbeiteGPS(lat, lon, acc){
             let bkmAnzeige = bkm > 0 ? bkm.toFixed(3) : "-";
             if(dirText) bkmAnzeige += ` | <strong>${dirText}</strong>`;
             
-            htmlOutput = `<span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige}`;
+            htmlOutput = `<span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige} ${techInfo}`;
 
         } else {
             // --- LANDSTRASSE ERKANNT ---
@@ -610,7 +589,7 @@ async function verarbeiteGPS(lat, lon, acc){
             let aktuellerKM = (parseFloat(props.STATANF) || 0) + (snapped.properties.location || 0);
             let icon = (props.STRKL === "B" || props.STRKL === "b") ? "🚙" : "🌲";
             
-            htmlOutput = `<span style="color:orange;font-weight:bold;">${icon} ${strName} erkannt</span><br><small>Abschnitt: <b>${abschnitt}${ast}</b> | KM: <b>${aktuellerKM.toFixed(3)}</b></small>`;
+            htmlOutput = `<span style="color:orange;font-weight:bold;">${icon} ${strName} erkannt</span><br><small>Abschnitt: <b>${abschnitt}${ast}</b> | KM: <b>${aktuellerKM.toFixed(3)}</b></small> ${techInfo}`;
             
             document.getElementById("km").value = "";
             document.getElementById("b").innerText="-";
@@ -620,19 +599,20 @@ async function verarbeiteGPS(lat, lon, acc){
         }
 
         // --- KREUZUNGS-UI ---
-        let andereImKreuz = nahBereich.filter(k => k.name !== sel.name);
+        let andereImKreuz = sortKandidaten.filter(k => k.name !== sel.name && k.dist <= 0.8);
         if (andereImKreuz.length > 0) {
             htmlOutput += `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--input-border); text-align: left;">`;
             htmlOutput += `<span style="font-size:0.8em; color:var(--text-secondary);">📍 Mehrere Straßen im Umkreis. Wechsle zu:</span><br>`;
             
             andereImKreuz.forEach(k => {
                 let btnText = "";
+                let distMeter = Math.round(k.dist * 1000);
                 if (Array.from(document.getElementById("autobahn").options).some(o=>o.value===k.name)) {
                     let k_bkm = berechneGoldgriffBKM(pt, k.name);
-                    btnText = `🛣️ ${k.name} (KM ${k_bkm.toFixed(1)})`;
+                    btnText = `🛣️ ${k.name} (KM ${k_bkm.toFixed(1)}) [${distMeter}m]`;
                 } else {
                     let k_icon = (k.props.STRKL === "B" || k.props.STRKL === "b") ? "🚙" : "🌲";
-                    btnText = `${k_icon} ${k.name}`;
+                    btnText = `${k_icon} ${k.name} [${distMeter}m]`;
                 }
                 htmlOutput += `<button type="button" onclick="wechsleFokus('${k.name}')" style="margin: 4px 4px 0 0; padding: 6px 12px; width: auto; font-size: 0.85em; background: transparent; color: var(--text-main); border: 1px solid var(--accent); border-radius: 6px;">${btnText}</button>`;
             });
@@ -698,7 +678,6 @@ function berechnen(isManual = false){
     if(isNaN(km)) return;
 
     if(isManual) {
-        // --- MANUELLER WACHEN WECHSEL ---
         let currentGrenzen = datenWachen[aktuelleWache].grenzen[a];
         if (currentGrenzen) {
             let minKm = Math.min(...currentGrenzen);
@@ -719,7 +698,6 @@ function berechnen(isManual = false){
             }
         }
 
-        // Gemeinde-Check
         let coords = holeKoordinateFuerKM(a, km);
         if(coords) {
             let pt = turf.point([coords[0], coords[1]]);
@@ -825,12 +803,11 @@ function calculateNKMap() {
         let strName = props.STRBEZ || props.StrBez || (strKl + (props.STRNR || props.StrNr || ""));
         
         let snapped = turf.nearestPointOnLine(best, pt, {units: 'meters'});
-        let distAufLinieMeter = snapped.properties.location || 0;
         
         let snappedCoord = turf.getCoord(snapped);
         map.setView([snappedCoord[1], snappedCoord[0]], map.getZoom(), {animate: true});
         
-        let htmlZettel = holeNKHtml(props, distAufLinieMeter, true);
+        let htmlZettel = holeNKHtml(props, 0, true); 
         
         resDiv.innerHTML = `<div class="nk-box" style="margin-top:0;">
             <strong style="color:var(--text-secondary);">📍 ${strName} | Fang-Abstand: ${(minDist*1000).toFixed(0)}m</strong><br>
