@@ -358,7 +358,8 @@ function loadWacheSetting() {
     }
 }
 
-function wechsleWache(wacheName, triggerEvent = false) {
+// NEU: autobahnToSelect verhindert unendliche UI-Loops beim Wachenwechsel
+function wechsleWache(wacheName, triggerEvent = false, autobahnToSelect = null) {
     aktuelleWache = wacheName;
     document.querySelectorAll('.wache-btn').forEach(btn => {
         if(btn.dataset.wache === wacheName) btn.classList.add('active-wache');
@@ -380,6 +381,10 @@ function wechsleWache(wacheName, triggerEvent = false) {
             if(dropWz) dropWz.add(new Option(a, a)); 
         });
     }
+
+    if (autobahnToSelect && autobahnen.includes(autobahnToSelect)) {
+        dropMain.value = autobahnToSelect;
+    }
     
     if (document.getElementById('saveWache').checked) {
         localStorage.setItem('stdWache', wacheName);
@@ -391,7 +396,7 @@ function wechsleWache(wacheName, triggerEvent = false) {
 
     manuellerFokus = null;
     updateUI();
-    berechnen(true);
+    berechnen(false); 
     
     if(typeof updateWzUI === 'function') updateWzUI(); 
 }
@@ -480,13 +485,26 @@ function updateUI() {
     }
 }
 
+// NEU: Zweistufiger Check, um Punkte aufzunehmen, die wegen Turf.js Präzision "aus dem Polygon fallen"
 function findeGemeindeFuerPunkt(pt) {
     if (datenGemeinden.length === 0) return "-";
+    
+    // Stufe 1: Normaler Check
     for (let f of datenGemeinden) {
         try { 
             if (turf.booleanPointInPolygon(pt, f)) return f.properties.GEN || f.properties.GN || f.properties.NAME || "Unbekannt"; 
         } catch(e) {}
     }
+    
+    // Stufe 2: Fallback! Wenn der Punkt auf 0.0001mm genau auf der Grenze liegt, lehnt Turf ihn ab.
+    // Wir erzeugen einen winzigen 50-Meter-Puffer-Kreis und prüfen, ob der Kreis eine Gemeinde schneidet.
+    try {
+        let buffered = turf.buffer(pt, 0.05, {units: 'kilometers'}); 
+        for (let f of datenGemeinden) {
+            if (turf.booleanIntersects(buffered, f)) return f.properties.GEN || f.properties.GN || f.properties.NAME || "Unbekannt";
+        }
+    } catch(e) {}
+
     return "Außerhalb NRW";
 }
 
@@ -538,7 +556,6 @@ async function verarbeiteGPS(lat, lon, acc){
     
     document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
     
-    // HIER WURDEN DIE DATEN WIEDER VEREINT
     let alleDaten = datenBAB.concat(datenLand);
 
     let babHits = findeKandidaten(alleDaten, pt, null, 2.0).filter(k => k.name.startsWith("A"));
@@ -593,11 +610,7 @@ async function verarbeiteGPS(lat, lon, acc){
                 for (let wache in datenWachen) {
                     let g = datenWachen[wache].grenzen[strName];
                     if (g && bkm >= Math.min(...g) && bkm <= Math.max(...g)) {
-                        wechsleWache(wache, true);
-                        if(Array.from(document.getElementById("autobahn").options).some(o=>o.value===strName)) {
-                            document.getElementById("autobahn").value = strName;
-                        }
-                        updateUI();
+                        wechsleWache(wache, true, strName);
                         break;
                     }
                 }
@@ -716,14 +729,22 @@ function berechneGoldgriffBKM(meinPunkt, strName){
     return 0;
 }
 
+// NEU: Gemeinde berechnet sich jetzt flüssig während des Tippens, Wachenwechsel wartet auf "isManual = true"
 function berechnen(isManual = false){
     let kmRaw = document.getElementById("km").value.replace(',','.');
     let km = parseFloat(kmRaw);
     let drop = document.getElementById("autobahn");
     let a = drop.value;
     
-    if(isNaN(km)) return;
+    if(isNaN(km)) {
+        document.getElementById("g").innerText = "-";
+        document.getElementById("progress").style.width = "0%";
+        document.getElementById("m").innerText = "-";
+        document.getElementById("m_address").innerText = "-";
+        return;
+    }
 
+    // Wachenwechsel Logik wartet auf "Enter" oder "Klick aus dem Feld"
     if(isManual) {
         let currentGrenzen = datenWachen[aktuelleWache].grenzen[a];
         if (currentGrenzen) {
@@ -734,23 +755,21 @@ function berechnen(isManual = false){
                 for (let wache in datenWachen) {
                     let g = datenWachen[wache].grenzen[a];
                     if (g && km >= Math.min(...g) && km <= Math.max(...g)) {
-                        wechsleWache(wache, true);
-                        drop = document.getElementById("autobahn");
-                        drop.value = a;
-                        updateUI();
-                        break;
+                        wechsleWache(wache, true, a);
+                        return; // wechsleWache übernimmt ab hier alles neu!
                     }
                 }
             }
         }
+    }
 
-        let coords = holeKoordinateFuerKM(a, km);
-        if(coords) {
-            let pt = turf.point([coords[0], coords[1]]);
-            document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
-        } else {
-            document.getElementById("g").innerText = "-";
-        }
+    // Gemeinde immer live berechnen
+    let coords = holeKoordinateFuerKM(a, km);
+    if(coords) {
+        let pt = turf.point([coords[0], coords[1]]);
+        document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
+    } else {
+        document.getElementById("g").innerText = "-";
     }
 
     let wachenGrenzen = datenWachen[aktuelleWache].grenzen;
@@ -837,7 +856,6 @@ function calculateNKMap() {
     let pos = map.getCenter(); 
     let pt = turf.point([pos.lng, pos.lat]);
     
-    // HIER WURDEN DIE DATEN WIEDER VEREINT FÜR DIE KARTE
     let alleDaten = datenBAB.concat(datenLand);
     let best = null, minDist = Infinity;
 
@@ -917,7 +935,6 @@ function startWegZeit() {
     wzSpeed = parseFloat(document.getElementById("speed").value);
     let dirStr = document.getElementById("wz_richtung").value;
     
-    // Lese den Meldungsverzug aus
     let delayStr = document.getElementById("wz_delay").value.replace(',','.');
     let delayMin = parseFloat(delayStr) || 0;
     
@@ -928,11 +945,9 @@ function startWegZeit() {
     
     wzDir = dirStr.includes("(+)") ? 1 : -1;
     
-    // Berechne Startzeit abzüglich des Meldungsverzugs
     let delayMs = delayMin * 60 * 1000;
     wzStartTime = Date.now() - delayMs;
     
-    // UI Anpassen und Inputs sperren
     document.getElementById("btn_wz_start").style.display = "none";
     document.getElementById("btn_wz_stop").style.display = "block";
     document.getElementById("wz_result_box").style.display = "block";
@@ -952,7 +967,6 @@ function startWegZeit() {
 function stopWegZeit() {
     if(wzInterval) clearInterval(wzInterval);
     
-    // UI Anpassen und Inputs wieder freigeben
     document.getElementById("btn_wz_start").style.display = "block";
     document.getElementById("btn_wz_stop").style.display = "none";
     
