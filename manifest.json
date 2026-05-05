@@ -1,6 +1,6 @@
 {
-  "name": "Autobahn Tool NRW",
-  "short_name": "AutobahnTool",
+  "name": "Autobahn Tool v1.0",
+  "short_name": "Autobahn Tool v1.0",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f4f6f8",
