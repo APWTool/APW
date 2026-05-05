@@ -125,8 +125,8 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
         <button class="wache-btn" data-wache="Gladbach" onclick="wechsleWache('Gladbach', true)">Gladbach</button>
     </div>
     
-    <select id="autobahn" onchange="manuellerFokus = this.value; updateUI(); updateRichtung(); berechnen(true);"></select>
-    <input id="km" placeholder="Kilometer manuell eingeben" inputmode="decimal" oninput="berechnen(true)">
+    <select id="autobahn" onchange="manuellerFokus = this.value; updateUI(); berechnen(true);"></select>
+    <input id="km" placeholder="Kilometer manuell eingeben" inputmode="decimal" oninput="berechnen(false)" onchange="berechnen(true)">
 
     <button id="gpsBtn" onclick="toggleGPS()">📡 GPS Live-Erfassung starten</button>
     <div id="gps-info">Lade NRW Geodaten... Bitte warten.</div>
@@ -137,8 +137,8 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
     <div class="result">
         <p><strong>Bereich:</strong> <span id="b">-</span></p>
         <p><strong>Gemeinde:</strong> <span id="g">-</span></p>
-        <p><strong>Meisterei (nur Hilden):</strong> <span id="m">-</span></p>
-        <p><strong>Adresse (nur Hilden):</strong> <span id="m_address">-</span></p>
+        <p><strong>Meisterei:</strong> <span id="m">-</span></p>
+        <p><strong>Adresse:</strong> <span id="m_address">-</span></p>
         <div class="bar"><div id="progress" class="fill"></div></div>
     </div>
 
@@ -174,7 +174,6 @@ td a { text-decoration: none; color: var(--accent); font-weight: bold; }
     <select id="wz_richtung"></select>
     <input id="start_km" placeholder="Letzter bekannter KM" inputmode="decimal">
     
-    <!-- NEUES FELD FÜR MELDUNGSVERZUG -->
     <input id="wz_delay" placeholder="Meldungsalter in Minuten (z.B. 5)" inputmode="decimal">
     
     <div style="margin-top: 10px; padding: 10px; border: 1px solid var(--input-border); border-radius: 6px; background: var(--bg-body); font-size: 0.9em;">
@@ -392,7 +391,6 @@ function wechsleWache(wacheName, triggerEvent = false) {
 
     manuellerFokus = null;
     updateUI();
-    updateRichtung();
     berechnen(true);
     
     if(typeof updateWzUI === 'function') updateWzUI(); 
@@ -480,15 +478,6 @@ function updateUI() {
     } else {
         tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>Keine Liste hinterlegt.</td></tr>";
     }
-}
-
-function updateRichtung(){
-    let a=document.getElementById("autobahn").value, sel=document.getElementById("richtung"); 
-    if(!sel) return;
-    sel.innerHTML="";
-    let richtungen = datenWachen[aktuelleWache].richtungen;
-    if(!richtungen[a]) return;
-    richtungen[a].forEach(r=>{ let opt=document.createElement("option"); opt.value=r; opt.textContent=r; sel.appendChild(opt); });
 }
 
 function findeGemeindeFuerPunkt(pt) {
@@ -609,7 +598,6 @@ async function verarbeiteGPS(lat, lon, acc){
                             document.getElementById("autobahn").value = strName;
                         }
                         updateUI();
-                        updateRichtung();
                         break;
                     }
                 }
@@ -622,7 +610,6 @@ async function verarbeiteGPS(lat, lon, acc){
             if (document.getElementById("autobahn").value !== strName) {
                 document.getElementById("autobahn").value = strName;
                 updateUI();
-                updateRichtung();
             }
             manuellerFokus = strName; 
             berechnen(false);
@@ -692,7 +679,6 @@ function wechsleFokus(zielName) {
     if (Array.from(drop.options).some(o => o.value === zielName)) {
         drop.value = zielName;
         updateUI();      
-        updateRichtung();  
         berechnen(true);       
     }
     if (letzteLat !== 0) {
@@ -752,7 +738,6 @@ function berechnen(isManual = false){
                         drop = document.getElementById("autobahn");
                         drop.value = a;
                         updateUI();
-                        updateRichtung();
                         break;
                     }
                 }
@@ -947,9 +932,17 @@ function startWegZeit() {
     let delayMs = delayMin * 60 * 1000;
     wzStartTime = Date.now() - delayMs;
     
+    // UI Anpassen und Inputs sperren
     document.getElementById("btn_wz_start").style.display = "none";
     document.getElementById("btn_wz_stop").style.display = "block";
     document.getElementById("wz_result_box").style.display = "block";
+    
+    document.getElementById("wz_autobahn").disabled = true;
+    document.getElementById("wz_richtung").disabled = true;
+    document.getElementById("start_km").disabled = true;
+    document.getElementById("wz_delay").disabled = true;
+    document.getElementById("speed").disabled = true;
+    document.querySelectorAll('input[name="speed_mode"]').forEach(r => r.disabled = true);
     
     if(wzInterval) clearInterval(wzInterval);
     wzInterval = setInterval(tickWegZeit, 1000);
@@ -958,8 +951,19 @@ function startWegZeit() {
 
 function stopWegZeit() {
     if(wzInterval) clearInterval(wzInterval);
+    
+    // UI Anpassen und Inputs wieder freigeben
     document.getElementById("btn_wz_start").style.display = "block";
     document.getElementById("btn_wz_stop").style.display = "none";
+    
+    document.getElementById("wz_autobahn").disabled = false;
+    document.getElementById("wz_richtung").disabled = false;
+    document.getElementById("start_km").disabled = false;
+    document.getElementById("wz_delay").disabled = false;
+    
+    let mode = document.querySelector('input[name="speed_mode"]:checked').value;
+    if(mode === 'manual') document.getElementById("speed").disabled = false;
+    document.querySelectorAll('input[name="speed_mode"]').forEach(r => r.disabled = false);
 }
 
 function tickWegZeit() {
