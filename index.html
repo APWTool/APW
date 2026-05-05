@@ -265,7 +265,7 @@ const meistereien = {
 };
 
 let aktuelleWache = "Hilden"; 
-let datenLand=[], referenzPunkte=[], datenGemeinden=[];
+let datenLand=[], datenBAB=[], referenzPunkte=[], datenGemeinden=[];
 let letzteLat = 0, letzteLon = 0, letzteAcc = 0; 
 let bkmHistorie = []; 
 let manuellerFokus = null;
@@ -304,13 +304,15 @@ function showPage(pageId) {
     }
 }
 
-// ACHTUNG: AbschnittBAB.json wurde entfernt, da überflüssig!
+// LÄDT WIEDER ALLE DATENSÄTZE INKL. ABSCHNITTBAB
 Promise.all([
     fetch('Abschnitt.json').then(res=>res.json()),
+    fetch('AbschnittBAB.json').then(res=>res.json()),
     fetch('BABKM.json').then(res=>res.json()),
     fetch('Gemeinden.json').then(res=>res.json())   
-]).then(([land, punkte, gem])=>{
+]).then(([land, bab, punkte, gem])=>{
     datenLand = extrahiere(land, true);
+    datenBAB = extrahiere(bab, true);
     referenzPunkte = extrahiere(punkte, false);
     datenGemeinden = extrahiereGemeinden(gem); 
     document.getElementById("gps-info").innerHTML='<span style="color:green; font-weight:bold;">✅ Geo-Datenbank geladen</span>';
@@ -544,7 +546,8 @@ async function verarbeiteGPS(lat, lon, acc){
     
     document.getElementById("g").innerText = findeGemeindeFuerPunkt(pt);
     
-    let alleDaten = datenLand;
+    // HIER WURDEN DIE DATEN WIEDER VEREINT
+    let alleDaten = datenBAB.concat(datenLand);
 
     let babHits = findeKandidaten(alleDaten, pt, null, 2.0).filter(k => k.name.startsWith("A"));
     let bundHits = findeKandidaten(alleDaten, pt, "BUND", 2.0);
@@ -845,7 +848,9 @@ function closeMap() { document.getElementById('map-overlay').style.display = 'no
 function calculateNKMap() {
     let pos = map.getCenter(); 
     let pt = turf.point([pos.lng, pos.lat]);
-    let alleDaten = datenLand;
+    
+    // HIER WURDEN DIE DATEN WIEDER VEREINT FÜR DIE KARTE
+    let alleDaten = datenBAB.concat(datenLand);
     let best = null, minDist = Infinity;
 
     alleDaten.forEach(f => {
