@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Autobahn Tool v1.1</title>
 
-<!-- GoatCounter -->
+<!-- GoatCounter Analytics -->
 <script data-goatcounter="https://apwpatrick.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 
 <link rel="manifest" href="manifest.json">
@@ -273,10 +273,7 @@ let datenLand=[], datenBAB=[], referenzPunkte=[], datenGemeinden=[];
 let letzteLat = 0, letzteLon = 0, letzteAcc = 0; 
 let bkmHistorie = []; 
 let manuellerFokus = null;
-
 let map = null;
-let mapLineLayer = null; 
-let mapSnapMarker = null; 
 
 // Weg-Zeit Variablen
 let wzInterval = null;
@@ -290,7 +287,7 @@ if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matche
 }
 
 function toggleTheme() {
-    const doc = document.documentElement; i
+    const doc = document.documentElement;
     if (doc.getAttribute("data-theme") === "dark") doc.setAttribute("data-theme", "light"); 
     else doc.setAttribute("data-theme", "dark");
 }
@@ -844,7 +841,7 @@ function holeNKHtml(props, distMeter = 0, isMap = false) {
 
     return `
         ${debugInfo}
-        <table style="width:100%; border:none; margin:0; font-family:monospace; font-size:1.6em;">
+        <table style="width:100%; border:none; margin:0; font-family:monospace; font-size:2em;">
             <tr><td style="border:none; padding:3px 0;">von Netzknoten A:</td><td style="border:none; padding:3px 0; text-align:right;"><b>${vnk}</b></td></tr>
             <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${vb}</b></td></tr>
             <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">nach B:</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${bnk}</b></td></tr>
@@ -881,13 +878,7 @@ function openMap() {
     }
 }
 
-function closeMap() { 
-    document.getElementById('map-overlay').style.display = 'none'; 
-    // Aufräumen beim Schließen
-    if (mapLineLayer) map.removeLayer(mapLineLayer);
-    if (mapSnapMarker) map.removeLayer(mapSnapMarker);
-}
-
+function closeMap() { document.getElementById('map-overlay').style.display = 'none'; }
 
 function calculateNKMap() {
     let pos = map.getCenter(); 
@@ -904,11 +895,6 @@ function calculateNKMap() {
     });
 
     let resDiv = document.getElementById('nk-map-result');
-    
-    // NEU: Alte Zeichnungen auf der Karte entfernen
-    if (mapLineLayer) map.removeLayer(mapLineLayer);
-    if (mapSnapMarker) map.removeLayer(mapSnapMarker);
-
     if(best) {
         let props = best.properties || {};
         let strKl = String(props.STRKL || props.StrKl || "").toUpperCase();
@@ -916,28 +902,14 @@ function calculateNKMap() {
         
         let snapped = turf.nearestPointOnLine(best, pt, {units: 'meters'});
         let distAufLinieMeter = snapped.properties.location || 0;
+        
         let snappedCoord = turf.getCoord(snapped);
-        
-        // NEU: Zeichne die gefundene Straße (den amtlichen Vektor) als blaue Linie
-        mapLineLayer = L.geoJSON(best, {
-            style: { color: '#007BFF', weight: 6, opacity: 0.6 }
-        }).addTo(map);
-
-        // NEU: Zeichne den exakten berechneten Fangpunkt als roten Kreis
-        mapSnapMarker = L.circleMarker([snappedCoord[1], snappedCoord[0]], {
-            color: '#dc3545', fillColor: '#dc3545', fillOpacity: 1, radius: 6
-        }).addTo(map);
-        
-        // Karte sanft zum Straßenverlauf hinschieben
         map.setView([snappedCoord[1], snappedCoord[0]], map.getZoom(), {animate: true});
         
         let htmlZettel = holeNKHtml(props, distAufLinieMeter, true); 
         
         resDiv.innerHTML = `<div class="nk-box" style="margin-top:0;">
             <strong style="color:var(--text-secondary);">📍 ${strName} | Fang-Abstand: ${(minDist*1000).toFixed(0)}m</strong><br>
-            <div style="font-size:0.8em; color:var(--text-main); margin-top:4px; margin-bottom:8px;">
-                <em>Gerade in Überarbeitung für genauere erfassung.</em>
-            </div>
             <hr style="border:0; border-top:1px dashed var(--input-border); margin:6px 0;">
             ${htmlZettel}
         </div>`;
@@ -948,7 +920,6 @@ function calculateNKMap() {
     resDiv.style.display = 'block';
     setTimeout(() => { map.invalidateSize(); }, 50);
 }
-
 
 // --- WEG ZEIT RECHNER FUNKTIONEN ---
 
