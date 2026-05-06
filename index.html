@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autobahn Tool v1.1</title>
+<title>Autobahn Tool v1.3</title>
 
-<!-- GoatCounter Analytics -->
+<!-- GoatCounter -->
 <script data-goatcounter="https://apwpatrick.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 
 <link rel="manifest" href="manifest.json">
@@ -27,7 +27,7 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <style>
-/* --- DARK MODE VARIABLEN --- */
+/* --- OPTIK & DARK MODE VARIABLEN --- */
 :root { --bg-body: #f4f6f8; --bg-card: white; --text-main: #333; --text-secondary: #00529b; --input-bg: white; --input-border: #ccc; --table-head: #eee; --result-bg: #f0f4f8; --accent: #007BFF; }
 [data-theme="dark"] { --bg-body: #121212; --bg-card: #1e1e1e; --text-main: #e0e0e0; --text-secondary: #4dabff; --input-bg: #2d2d2d; --input-border: #444; --table-head: #333; --result-bg: #2a2d31; }
 
@@ -259,7 +259,6 @@ const meistereien = {
     A542: [{from:4.055,to:8.754,name:"AM Leverkusen",address:"Bonner Str. 71, 51379 Leverkusen"}]
 };
 
-// Koordinaten für jede Wache 
 const wachenAnker = {
     "Hilden": [6.935, 51.168],
     "Mülheim": [6.881, 51.424],
@@ -275,7 +274,9 @@ let bkmHistorie = [];
 let manuellerFokus = null;
 let map = null;
 
-// Weg-Zeit Variablen
+// Layergruppe für Zeichnungen auf der Karte
+let mapLineLayer = null; 
+
 let wzInterval = null;
 let wzStartTime = 0;
 let wzStartKm = 0;
@@ -401,7 +402,6 @@ function wechsleWache(wacheName, triggerEvent = false, autobahnToSelect = null) 
     if(typeof updateWzUI === 'function') updateWzUI(); 
 }
 
-// Für doppelte Autobahn-Kilometer
 function holeKoordinateFuerKM(autobahn, km) {
     if (referenzPunkte.length === 0 || isNaN(km)) return null;
     let suchName = autobahn.toUpperCase().replace(/\s/g, ''); let numOnly = autobahn.replace('A', ''); 
@@ -424,17 +424,11 @@ function holeKoordinateFuerKM(autobahn, km) {
         if (candidates.length > 0) {
             candidates.sort((a, b) => a.diff - b.diff);
 
-            // Alle Punkte finden, die nah dran sind (Toleranz 1.5)
             let bestDiff = candidates[0].diff;
             let topCandidates = candidates.filter(c => c.diff <= bestDiff + 1.5);
 
-            
             if (topCandidates.length > 1) {
-                
-                // Bestimme Ankerpunkt: 
-                // Prio 1: Wenn GPS aktiv ist
-                // Prio 2: Nutze den Mittelpunkt der aktuell ausgewählten Wache
-                let anchorCoords = wachenAnker["Hilden"]; // Standard-Fallback
+                let anchorCoords = wachenAnker["Hilden"]; 
                 
                 if (letzteLat !== 0 && letzteLon !== 0) {
                     anchorCoords = [letzteLon, letzteLat];
@@ -444,17 +438,14 @@ function holeKoordinateFuerKM(autobahn, km) {
                 
                 let anchorPt = turf.point(anchorCoords);
 
-                // Luftlinie zum Ankerpunkt
                 topCandidates.forEach(c => {
                     let cCoord = turf.getCoord(turf.centroid(c.pt));
                     c.anchorDist = turf.distance(anchorPt, turf.point(cCoord));
                 });
                 
-                // Kandidat, der am nächsten zum Anker ist, gewinnt
                 topCandidates.sort((a, b) => a.anchorDist - b.anchorDist);
             }
             
-            // Liefere Koordinaten
             let finalWinner = topCandidates[0];
             return turf.getCoord(turf.centroid(finalWinner.pt)); 
         }
@@ -676,7 +667,7 @@ async function verarbeiteGPS(lat, lon, acc){
             htmlOutput = `<span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige} ${techInfo}`;
 
         } else {
-            let abschnitt = props.ABSNR || "Unbekannt";
+            let abschnitt = props.ABSNR || props.Sk_Kennung || "Unbekannt";
             let ast = props.ABSAST && props.ABSAST !== "" ? ` (${props.ABSAST})` : "";
             let snapped = turf.nearestPointOnLine(sel.feature, pt);
             let aktuellerKM = (parseFloat(props.STATANF) || 0) + (snapped.properties.location || 0);
@@ -824,7 +815,7 @@ function holeNKHtml(props, distMeter = 0, isMap = false) {
     let bnk = props.BNK || props.Bnk || props.NETZKNOTEN_NACH || "-";
     let bb = props.BB || props.Bb || props.KNOTEN_NACH_BUCHSTABE || "-";
     
-    let rawAbs = props.ABSNr || props.ABSNR || props.ABS || props.ABS_NUMMER || "";
+    let rawAbs = props.ABSNr || props.ABSNR || props.ABS || props.Sk_Kennung || "";
     if ((vnk === "-" || bnk === "-") && rawAbs.length >= 15) {
         let absStr = String(rawAbs).padEnd(16, ' ');
         vnk = absStr.substring(0, 7).trim() || "-";
@@ -837,16 +828,17 @@ function holeNKHtml(props, distMeter = 0, isMap = false) {
     let stationKM = (stationBase + distMeter) / 1000;
 
     let debugInfo = "";
-    if (isMap) debugInfo = `<div style="font-size:0.8em; color:var(--text-secondary); margin-bottom:5px;">Snapping auf Abschnitt: <b>${rawAbs || "Unbekannt"}</b></div>`;
+    if (isMap) debugInfo = `<div style="font-size:0.85em; color:var(--text-secondary); margin-bottom:4px;">Abschnitt: <b>${rawAbs || "Unbekannt"}</b></div>`;
+
 
     return `
         ${debugInfo}
-        <table style="width:100%; border:none; margin:0; font-family:monospace; font-size:2em;">
-            <tr><td style="border:none; padding:3px 0;">von Netzknoten A:</td><td style="border:none; padding:3px 0; text-align:right;"><b>${vnk}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${vb}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">nach B:</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${bnk}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:3px 0; text-align:right; color:var(--text-secondary);"><b>${bb}</b></td></tr>
-            <tr><td style="border:none; padding:3px 0; border-top: 1px dashed var(--input-border);">Station (km):</td><td style="border:none; padding:3px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${stationKM.toFixed(3).replace('.',',')}</b></td></tr>
+        <table style="width:100%; border:none; margin:0; font-family:monospace; font-size:1.15em; line-height:1.2;">
+            <tr><td style="border:none; padding:1px 0;">von Knoten A:</td><td style="border:none; padding:1px 0; text-align:right;"><b>${vnk}</b></td></tr>
+            <tr><td style="border:none; padding:1px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:1px 0; text-align:right; color:var(--text-secondary);"><b>${vb}</b></td></tr>
+            <tr><td style="border:none; padding:1px 0; border-top: 1px dashed var(--input-border);">nach B:</td><td style="border:none; padding:1px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${bnk}</b></td></tr>
+            <tr><td style="border:none; padding:1px 0; color:var(--text-secondary);">Buchstabe:</td><td style="border:none; padding:1px 0; text-align:right; color:var(--text-secondary);"><b>${bb}</b></td></tr>
+            <tr><td style="border:none; padding:1px 0; border-top: 1px dashed var(--input-border);">Station (km):</td><td style="border:none; padding:1px 0; text-align:right; border-top: 1px dashed var(--input-border);"><b>${stationKM.toFixed(3).replace('.',',')}</b></td></tr>
         </table>
     `;
 }
@@ -878,47 +870,81 @@ function openMap() {
     }
 }
 
-function closeMap() { document.getElementById('map-overlay').style.display = 'none'; }
 
+function closeMap() { 
+    document.getElementById('map-overlay').style.display = 'none'; 
+    if (mapLineLayer) map.removeLayer(mapLineLayer);
+}
+
+// Netzknoten Logik Rot/Grün und Snapping
 function calculateNKMap() {
     let pos = map.getCenter(); 
     let pt = turf.point([pos.lng, pos.lat]);
     
     let alleDaten = datenBAB.concat(datenLand);
     let best = null, minDist = Infinity;
+    let alleImUmkreis = []; 
 
     alleDaten.forEach(f => {
         try {
             let d = turf.pointToLineDistance(pt, f);
-            if (d < minDist && d < 0.15) { minDist = d; best = f; }
+            if (d < 0.15) { 
+                alleImUmkreis.push(f);
+                if (d < minDist) { minDist = d; best = f; } 
+            }
         } catch(e) {}
     });
 
     let resDiv = document.getElementById('nk-map-result');
+    
+    if (mapLineLayer) map.removeLayer(mapLineLayer);
+
     if(best) {
         let props = best.properties || {};
         let strKl = String(props.STRKL || props.StrKl || "").toUpperCase();
-        let strName = props.STRBEZ || props.StrBez || (strKl + (props.STRNR || props.StrNr || ""));
+        let strName = props.STRBEZ || props.StrBez || props.Str_Kennung || (strKl + (props.STRNR || props.StrNr || ""));
         
         let snapped = turf.nearestPointOnLine(best, pt, {units: 'meters'});
         let distAufLinieMeter = snapped.properties.location || 0;
-        
         let snappedCoord = turf.getCoord(snapped);
-        map.setView([snappedCoord[1], snappedCoord[0]], map.getZoom(), {animate: true});
+        
+        mapLineLayer = L.layerGroup().addTo(map);
+
+        alleImUmkreis.forEach(feat => {
+            if(feat !== best) {
+                L.geoJSON(feat, {
+                    style: { color: '#dc3545', weight: 2.5, opacity: 0.6 }
+                }).addTo(mapLineLayer);
+            }
+        });
+
+        L.geoJSON(best, {
+            style: { color: '#28a745', weight: 3.5, opacity: 0.9 }
+        }).addTo(mapLineLayer);
         
         let htmlZettel = holeNKHtml(props, distAufLinieMeter, true); 
         
-        resDiv.innerHTML = `<div class="nk-box" style="margin-top:0;">
-            <strong style="color:var(--text-secondary);">📍 ${strName} | Fang-Abstand: ${(minDist*1000).toFixed(0)}m</strong><br>
+
+        resDiv.innerHTML = `<div class="nk-box" style="margin-top:0; padding:8px;">
+            <strong style="color:var(--text-secondary); font-size:1.1em;">📍 ${strName}/strong>
             <hr style="border:0; border-top:1px dashed var(--input-border); margin:6px 0;">
             ${htmlZettel}
         </div>`;
+        
+
+        resDiv.style.display = 'block';
+        
+
+        setTimeout(() => { 
+            map.invalidateSize(); 
+            map.setView([snappedCoord[1], snappedCoord[0]], map.getZoom(), {animate: false});
+        }, 20);
+
     } else {
         resDiv.innerHTML = `<p style="color:red; margin:0;">Keine Straße im 150m Umkreis gefunden. Bitte näher zoomen!</p>`;
+        resDiv.style.display = 'block';
+        setTimeout(() => { map.invalidateSize(); }, 20);
     }
-    
-    resDiv.style.display = 'block';
-    setTimeout(() => { map.invalidateSize(); }, 50);
 }
 
 // --- WEG ZEIT RECHNER FUNKTIONEN ---
