@@ -652,6 +652,15 @@ async function verarbeiteGPS(lat, lon, acc){
 
         if(Array.from(document.getElementById("autobahn").options).some(o=>o.value===strName)){
             let bkm = berechneGoldgriffBKM(pt, strName);
+            
+            // --- NEU: FALLBACK FÜR LAND-/BUNDESSTRASSEN IM DROPDOWN ---
+            if (bkm === 0) {
+                let snapped = turf.nearestPointOnLine(sel.feature, pt);
+                let statAnf = parseFloat(String(props.STATANF || props.StatAnf || props.STATION || "0").replace(',', '.'));
+                bkm = statAnf + (snapped.properties.location || 0);
+            }
+            // -----------------------------------------------------------
+
             document.getElementById("km").value = bkm > 0 ? bkm.toFixed(3).replace('.',',') : "";
             if (document.getElementById("autobahn").value !== strName) {
                 document.getElementById("autobahn").value = strName;
@@ -709,6 +718,14 @@ async function verarbeiteGPS(lat, lon, acc){
                 let distMeter = Math.round(k.dist * 1000);
                 if (Array.from(document.getElementById("autobahn").options).some(o=>o.value===k.name)) {
                     let k_bkm = berechneGoldgriffBKM(pt, k.name);
+                    
+                    // Fallback auch hier für die Anzeige alternativer Straßen im Kreuz!
+                    if (k_bkm === 0) {
+                        let k_snapped = turf.nearestPointOnLine(k.feature, pt);
+                        let k_statAnf = parseFloat(String(k.props.STATANF || k.props.StatAnf || k.props.STATION || "0").replace(',', '.'));
+                        k_bkm = k_statAnf + (k_snapped.properties.location || 0);
+                    }
+                    
                     btnText = `🛣️ ${k.name} (KM ${k_bkm.toFixed(1)}) [${distMeter}m]`;
                 } else {
                     let k_icon = (k.name.charAt(0) === "B") ? "🚙" : "🌲";
@@ -724,6 +741,7 @@ async function verarbeiteGPS(lat, lon, acc){
         document.getElementById("gps-info").innerHTML = `❓ Keine Straße im Umkreis gefunden.`;
     }
 }
+
 
 function wechsleFokus(zielName) {
     manuellerFokus = zielName;
