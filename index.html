@@ -404,13 +404,22 @@ function wechsleWache(wacheName, triggerEvent = false, autobahnToSelect = null) 
 
 function holeKoordinateFuerKM(autobahn, km) {
     if (referenzPunkte.length === 0 || isNaN(km)) return null;
-    let suchName = autobahn.toUpperCase().replace(/\s/g, ''); let numOnly = autobahn.replace('A', ''); 
+    let suchName = autobahn.toUpperCase().replace(/\s/g, ''); 
+
+    let numOnly = autobahn.toUpperCase().replace(/^[ABL]/, ''); 
+    
     let passende = referenzPunkte.filter(f => {
         if(!f.properties) return false;
         let refBez = String(f.properties.Bez || f.properties.STRBEZ || "").toUpperCase().replace(/\s/g, '');
-        let strKl = String(f.properties.STRKL || "").toUpperCase();
-        if(strKl === "B" || strKl === "L" || strKl === "K") return false; 
-        return refBez === suchName || refBez === "BAB" + numOnly || refBez === numOnly || refBez === "A" + numOnly;
+        
+     
+        
+        return refBez === suchName || 
+               refBez === "BAB" + numOnly || 
+               refBez === "A" + numOnly || 
+               refBez === "L" + numOnly || 
+               refBez === "B" + numOnly || 
+               refBez === numOnly;
     });
 
     if(passende.length > 0) {
@@ -546,7 +555,6 @@ function toggleGPS(){
     }
 }
 
-// ROBUST: Fängt auch "StrBez" und fehlerhaft formatierte Json Felder auf
 function findeKandidaten(liste, pt, filter, maxDist){
     let hits = {};
     liste.forEach(f=>{
@@ -564,7 +572,7 @@ function findeKandidaten(liste, pt, filter, maxDist){
                 }
             }
 
-            if (!name || name === "") return; // Leer, überspringen!
+            if (!name || name === "") return; 
             
             if (filter) {
                 if (Array.isArray(filter) && !filter.includes(name)) return;
@@ -653,7 +661,7 @@ async function verarbeiteGPS(lat, lon, acc){
         if(Array.from(document.getElementById("autobahn").options).some(o=>o.value===strName)){
             let bkm = berechneGoldgriffBKM(pt, strName);
             
-            // --- NEU: FALLBACK FÜR LAND-/BUNDESSTRASSEN IM DROPDOWN ---
+            
             if (bkm === 0) {
                 let snapped = turf.nearestPointOnLine(sel.feature, pt);
                 let statAnf = parseFloat(String(props.STATANF || props.StatAnf || props.STATION || "0").replace(',', '.'));
@@ -687,7 +695,7 @@ async function verarbeiteGPS(lat, lon, acc){
             htmlOutput = `<span style="color:green;font-weight:bold;">✅ ${strName}</span> | KM: ${bkmAnzeige} ${techInfo}`;
 
         } else {
-            // ROBUST: Fällt nicht ins Kauderwelsch zurück
+         
             let abschnitt = props.ABSNR || props.AbsNr || props.Sk_Kennung || props.ABS_NUMMER || "Unbekannt";
             let ast = props.ABSAST || props.AbsAst || "";
             let astFormatted = ast !== "" ? ` (${ast})` : "";
@@ -758,10 +766,14 @@ function wechsleFokus(zielName) {
 
 function berechneGoldgriffBKM(meinPunkt, strName){
     if(referenzPunkte.length === 0) return 0;
-    let suchName=strName.toUpperCase().replace(/\s/g,'').replace('A','');
-    let passende=referenzPunkte.filter(f=>{
+    
+    
+    let suchName = strName.toUpperCase().replace(/\s/g,'').replace(/^[ABL]/, '');
+    
+    let passende = referenzPunkte.filter(f=>{
         if(!f.properties||!f.properties.Bez) return false;
-        return String(f.properties.Bez).toUpperCase().replace(/\s/g,'').replace('A','')===suchName;
+   
+        return String(f.properties.Bez).toUpperCase().replace(/\s/g,'').replace(/^[ABL]/, '') === suchName;
     });
     
     if(passende.length > 1){
