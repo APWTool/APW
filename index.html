@@ -727,7 +727,7 @@ async function verarbeiteGPS(lat, lon, acc){
                 if (Array.from(document.getElementById("autobahn").options).some(o=>o.value===k.name)) {
                     let k_bkm = berechneGoldgriffBKM(pt, k.name);
                     
-                    // Fallback auch hier für die Anzeige alternativer Straßen im Kreuz!
+                    // Fallback für die Anzeige alternativer Straßen (AK)
                     if (k_bkm === 0) {
                         let k_snapped = turf.nearestPointOnLine(k.feature, pt);
                         let k_statAnf = parseFloat(String(k.props.STATANF || k.props.StatAnf || k.props.STATION || "0").replace(',', '.'));
