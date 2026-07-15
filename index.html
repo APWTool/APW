@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Autobahn Tool v2.9</title>
 
- <script data-goatcounter="https://apwpatrick.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
- 
+<script data-goatcounter="https://apwpatrick.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#007BFF">
 <link rel="apple-touch-icon" href="icon-192.png.png">
@@ -608,6 +608,8 @@ let amGrenzenKorridore = null; // { A3: [ { mid, kmVon, kmBis, grenzen, segmente
 let amGrenzenBabPromise = null; // legacy (kept to avoid ref errors if any)
 let letzteLat = 0, letzteLon = 0, letzteAcc = 0; 
 let aktiveLat = 0, aktiveLon = 0, aktiveKM = 0; 
+let lastGpsStrasse = null;
+let lastGpsBkm = 0;
 let manuellerFokus = null;
 let erzwungenerFokus = false;
 let aktiveStrasse = "";
@@ -1254,6 +1256,60 @@ function waehleKandidatMitFokus(pt, kandidaten, fokusName, maxFokusAbweichungKm,
     return best;
 }
 
+function berechneGpsMaxDistKm(acc) {
+    return Math.min(1.0, Math.max(0.3, ((acc || 50) / 1000) * 3.5));
+}
+
+function bereichereGpsKandidat(pt, hit) {
+    if (!hit) return null;
+    let achse = normalisiereAchse((hit.feature.properties || {}).Sk_Achse);
+    let seg = findeNaechsteStrassenFeature(pt, hit.name, achse) || findeNaechsteStrassenFeature(pt, hit.name, "");
+    if (seg && seg.feature) {
+        return { ...hit, feature: seg.feature, dist: Math.min(hit.dist, seg.dist) };
+    }
+    return hit;
+}
+
+function waehleGpsStrassenKandidat(pt, kandidaten, acc) {
+    if (!kandidaten || !kandidaten.length) return null;
+    if (erzwungenerFokus && manuellerFokus) {
+        let focus = waehleStrassenKandidat(pt, manuellerFokus, 2.5);
+        if (focus) {
+            erzwungenerFokus = false;
+            return bereichereGpsKandidat(pt, focus);
+        }
+    }
+
+    let sorted = kandidaten.slice().sort((a, b) => a.dist - b.dist);
+    let nearest = sorted[0];
+    let nearestBab = sorted.find(k => k.name.startsWith("A"));
+    let pool;
+    if (nearest.name.startsWith("A")) {
+        pool = sorted.filter(k => k.name.startsWith("A"));
+    } else if (nearestBab && nearestBab.dist <= nearest.dist + 0.15) {
+        pool = sorted.filter(k => k.name.startsWith("A"));
+    } else {
+        return bereichereGpsKandidat(pt, nearest);
+    }
+
+    pool.sort((a, b) => a.dist - b.dist);
+    let best = bereichereGpsKandidat(pt, pool[0]);
+
+    if (lastGpsStrasse && lastGpsBkm > 0 && best.name !== lastGpsStrasse) {
+        let prevHit = pool.find(k => k.name === lastGpsStrasse);
+        if (prevHit) {
+            let prev = bereichereGpsKandidat(pt, prevHit);
+            let prevBkm = berechneGoldgriffBKM(pt, prev.name, prev.feature);
+            if (prevBkm <= 0) prevBkm = berechneGoldgriffBKM(pt, prev.name, null);
+            if (prevBkm > 0 && Math.abs(prevBkm - lastGpsBkm) < 6 && prev.dist <= best.dist + 0.2) {
+                return prev;
+            }
+        }
+    }
+
+    return best;
+}
+
 function findeSegmenteFuerKarte(pt, maxDistKm) {
     return findeKandidatenFuerPin(pt, maxDistKm, false).slice(0, 10).map(k => k.feature);
 }
@@ -1439,8 +1495,8 @@ function amKorridorPasstZuAnker(korridor, strName, km, anchor) {
     return true;
 }
 
-function ermittleMeistereiFuerKM(strName, km) {
-    let anchorPt = holeKontextAnkerPt(strName, km, null);
+function ermittleMeistereiFuerKM(strName, km, pt) {
+    let anchorPt = holeKontextAnkerPt(strName, km, pt);
     let korridor = waehleAmKorridor(strName, km, anchorPt);
     let korridorHit = null;
     if (korridor && amKorridorPasstZuAnker(korridor, strName, km, anchorPt)) {
@@ -1459,7 +1515,7 @@ function ermittleMeistereiFuerKM(strName, km) {
     let pos = ermittleFahrbahnPosition(strName, km, "Bestandsachse");
     let feature = pos ? pos.feature : null;
     let props = pos ? pos.props : {};
-    let pt = pos ? pos.point : null;
+    let snapPt = pos ? pos.point : null;
 
     if (!feature && pos && pos.coords) {
         let hit = findeStrassenFeatureFuerPunkt(turf.point(pos.coords), strName, "Bestandsachse");
@@ -1467,16 +1523,16 @@ function ermittleMeistereiFuerKM(strName, km) {
         if (hit) {
             feature = hit.feature;
             props = hit.props || {};
-            pt = turf.nearestPointOnLine(feature, turf.point(pos.coords), {units: 'kilometers'});
+            snapPt = turf.nearestPointOnLine(feature, turf.point(pos.coords), {units: 'kilometers'});
         }
     }
 
-    if (!feature || !pt) {
+    if (!feature || !snapPt) {
         return { name: "Nicht in DB", addr: "-", phone: "-", rawAbs: "", distMeter: 0 };
     }
 
     let rawAbs = props.ABSNr || "";
-    let snapped = turf.nearestPointOnLine(feature, pt, {units: 'kilometers'});
+    let snapped = turf.nearestPointOnLine(feature, snapPt, {units: 'kilometers'});
     let distMeter = (snapped.properties.location || 0) * 1000;
     let m_name = ermittleAM(rawAbs, distMeter);
     let kontakte = holeAdresseUndTelefon(m_name);
@@ -1493,12 +1549,19 @@ function setzeMeistereiAusAbschnitt(rawAbs, distMeter) {
     return m_name;
 }
 
-function setzeMeistereiAnzeige(strName, km) {
-    let m = ermittleMeistereiFuerKM(strName, km);
+function setzeMeistereiAnzeige(strName, km, pt) {
+    let m = ermittleMeistereiFuerKM(strName, km, pt);
     document.getElementById("m").innerText = m.name;
     document.getElementById("m_address").innerText = m.addr;
     document.getElementById("m_phone").innerText = m.phone;
     return m;
+}
+
+function setzeGpsKorridorAnker(pt, strName, bkm) {
+    if (!pt || !strName || !(bkm > 0)) return;
+    bkmKorridorAnkerPt = pt;
+    bkmKorridorAnkerStr = strName;
+    bkmKorridorAnkerKm = bkm;
 }
  
 function istToggleAn(id) {
@@ -1596,9 +1659,9 @@ function holeBkmKorridorAnker(autobahn, km) {
 }
 
 function holeKontextAnkerPt(strName, km, pt) {
+    let korridor = holeBkmKorridorAnker(strName, km);
+    if (korridor) return korridor;
     if (pt) return pt;
-    let bkm = holeBkmKorridorAnker(strName, km);
-    if (bkm) return bkm;
     if (aktiveLat !== 0 && strName === aktiveStrasse && Math.abs(aktiveKM - km) <= 1.5) {
         return turf.point([aktiveLon, aktiveLat]);
     }
@@ -3077,15 +3140,36 @@ function waehleBkmAbschnitt(index) {
 
 function aktualisiereBkmDoppelWarnung(strName, km, opts) {
     opts = opts || {};
-    let manuellKontext = opts.isManual || !watchId || letzteKontextMeta.manuell;
-    if (!manuellKontext || !strName || !strName.startsWith("A") || !(km > 0) || isNaN(km)) {
+    if (!strName || !strName.startsWith("A") || !(km > 0) || isNaN(km)) {
         setzeBkmDoppelWarnung(null, false);
         return;
     }
-    let pt = aktiveLat !== 0 ? turf.point([aktiveLon, aktiveLat]) : (letzteLat !== 0 ? turf.point([letzteLon, letzteLat]) : null);
+    let pt = (watchId && letzteLat !== 0) ? turf.point([letzteLon, letzteLat])
+        : (aktiveLat !== 0 ? turf.point([aktiveLon, aktiveLat]) : null);
     let aufDuessel = istDuesselAktiv();
     let achse = document.getElementById(aufDuessel ? "richtung-duessel" : "richtung").value || aktiveAchse || "Bestandsachse";
-    setzeBkmDoppelWarnung(ermittleBkmMehrfachvergabe(strName, km, pt, achse), true);
+    let info = ermittleBkmMehrfachvergabe(strName, km, pt, achse);
+
+    if (opts.isGps && info && info.anzahl > 1 && info._korridore) {
+        let k = info._korridore[info.gewaehltIndex >= 0 ? info.gewaehltIndex : 0];
+        if (k) {
+            let coord = korridorZentrumKoordinate(k, km);
+            if (coord) {
+                bkmKorridorAnkerPt = turf.point(coord);
+                bkmKorridorAnkerStr = strName;
+                bkmKorridorAnkerKm = km;
+            }
+        }
+        setzeBkmDoppelWarnung(null, false);
+        return;
+    }
+
+    let manuellKontext = opts.isManual || !watchId || letzteKontextMeta.manuell;
+    if (!manuellKontext) {
+        setzeBkmDoppelWarnung(null, false);
+        return;
+    }
+    setzeBkmDoppelWarnung(info, true);
 }
 
 function formatiereGemeindeAnzeige(name, bereich, km) {
@@ -3351,6 +3435,7 @@ function toggleGPS(){
     const btn=document.getElementById("gpsBtn"), info=document.getElementById("gps-info");
     if(watchId){
        navigator.geolocation.clearWatch(watchId); watchId=null;
+       lastGpsStrasse = null; lastGpsBkm = 0;
        btn.innerHTML="📡 GPS Live-Erfassung starten"; btn.classList.remove("active");
        if (geoDatenBereit) { info.className = "gps-info--versteckt"; info.innerHTML = ""; }
        else info.innerHTML="GPS pausiert.";
@@ -3526,11 +3611,13 @@ function queueVerarbeiteGPS(lat, lon, acc) {
 async function verarbeiteGPS(lat, lon, acc){
     letzteLat = lat; letzteLon = lon; letzteAcc = acc;
     const pt = turf.point([lon, lat]);
+    let maxDistGps = berechneGpsMaxDistKm(acc);
     
-    let sortKandidaten = findeKandidatenFuerPin(pt, 2.0, true);
+    let sortKandidaten = findeKandidatenFuerPin(pt, maxDistGps, false);
  
     if(sortKandidaten.length > 0) {
-        let sel = waehleKandidatMitFokus(pt, sortKandidaten, manuellerFokus, 0.12, erzwungenerFokus);
+        let sel = waehleGpsStrassenKandidat(pt, sortKandidaten, acc);
+        if (!sel) sel = sortKandidaten[0];
 
         const props = sel.feature.properties || {};
         const strName = sel.name; 
@@ -3554,8 +3641,8 @@ async function verarbeiteGPS(lat, lon, acc){
         let snapped = turf.nearestPointOnLine(sel.feature, pt, {units: 'kilometers'});
         
         let snappedCoord = turf.getCoord(snapped);
-        aktiveLat = snappedCoord[1];
-        aktiveLon = snappedCoord[0];
+        aktiveLat = lat;
+        aktiveLon = lon;
 
         let distAufLinieKm = snapped.properties.location || 0;
         let distMeter = distAufLinieKm * 1000; 
@@ -3570,10 +3657,14 @@ async function verarbeiteGPS(lat, lon, acc){
         if (strName.startsWith("A")) {
             let needsSwitch = true;
             let currentGrenzen = datenWachen[aktuelleWache].grenzen[strName];
-            bkm = berechneGoldgriffBKM(pt, strName, sel.feature);
+            let bkmFeature = sel.feature;
+            let segHit = findeNaechsteStrassenFeature(pt, strName, achse) || findeNaechsteStrassenFeature(pt, strName, "");
+            if (segHit && segHit.feature) bkmFeature = segHit.feature;
+            bkm = berechneGoldgriffBKM(pt, strName, bkmFeature);
             if (bkm <= 0) bkm = berechneGoldgriffBKM(pt, strName, null);
             bkm = validiereBkmPlausibilitaet(pt, strName, bkm);
             aktiveKM = bkm;
+            if (bkm > 0) { lastGpsStrasse = strName; lastGpsBkm = bkm; }
 
             if (currentGrenzen && bkm >= Math.min(...currentGrenzen) && bkm <= Math.max(...currentGrenzen)) needsSwitch = false; 
             
@@ -3632,8 +3723,9 @@ async function verarbeiteGPS(lat, lon, acc){
         }
 
         if (strName.startsWith("A") && bkm > 0) {
-            setzeMeistereiAnzeige(strName, bkm);
-            setzeBkmDoppelWarnung(null, false);
+            setzeGpsKorridorAnker(pt, strName, bkm);
+            aktualisiereBkmDoppelWarnung(strName, bkm, { isGps: true });
+            setzeMeistereiAnzeige(strName, bkm, null);
         } else if (strName.startsWith("A") && rawAbs) {
             setzeMeistereiAusAbschnitt(rawAbs, distMeter);
         }
@@ -3760,7 +3852,7 @@ function berechneGoldgriffBKM(meinPunkt, strName, feature) {
 
     return (isFinite(bkm) && bkm > 0) ? bkm : 0;
 }
- 
+
 function berechnenDebounced(isManual = false) {
     clearTimeout(berechnenTimer);
     berechnenTimer = setTimeout(() => berechnen(isManual), isManual ? 0 : 200);
@@ -3831,7 +3923,7 @@ function berechnen(isManual = false){
     }
 
     if (!istLandesOderBundesstrasse(a)) {
-        setzeMeistereiAnzeige(a, km);
+        setzeMeistereiAnzeige(a, km, holeKontextAnkerPt(a, km, null));
     }
 
     if (document.getElementById('page-zustaendigkeiten').style.display === 'block') {
