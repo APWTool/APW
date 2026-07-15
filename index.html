@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Autobahn Tool v2.9</title>
-
+ 
 <script data-goatcounter="https://apwpatrick.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
-
+ 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#007BFF">
 <link rel="apple-touch-icon" href="icon-192.png.png">
@@ -612,6 +612,7 @@ let lastGpsStrasse = null;
 let lastGpsBkm = 0;
 let manuellerFokus = null;
 let erzwungenerFokus = false;
+let fokusStickyUntil = 0;
 let aktiveStrasse = "";
 let aktiveAchse = "";
 let letzteKontextMeta = { snapDistM: null, gpsAccM: 0, rfApproximiert: false, manuell: false };
@@ -1044,7 +1045,13 @@ async function ladeAlleGeoDaten() {
 
     baueLookupIndizes();
 
-    geoDatenBereit = datenBAB.length > 0 && referenzPunkte.length > 0 && datenGemeinden.length > 0;
+    if (datenAutobahn.length === 0) {
+        fehler.push("AbschnittBAB.json fehlt oder leer – ohne BAB-Geometrie keine Autobahn-/KM-Erfassung.");
+    }
+    geoDatenBereit = datenAutobahn.length > 0 && referenzPunkte.length > 0 && datenGemeinden.length > 0;
+    // #region agent log
+    fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:ladeAlleGeoDaten',message:'load summary',data:{datenAutobahn:datenAutobahn.length,datenBAB:datenBAB.length,referenzPunkte:referenzPunkte.length,geoDatenBereit,fehler},timestamp:Date.now(),hypothesisId:'H4',runId:'fix4'})}).catch(()=>{});
+    // #endregion
 
     let info = document.getElementById("gps-info");
     if (geoDatenBereit) {
@@ -1272,12 +1279,21 @@ function bereichereGpsKandidat(pt, hit) {
 
 function waehleGpsStrassenKandidat(pt, kandidaten, acc) {
     if (!kandidaten || !kandidaten.length) return null;
-    if (erzwungenerFokus && manuellerFokus) {
-        let focus = waehleStrassenKandidat(pt, manuellerFokus, 2.5);
-        if (focus) {
+
+    // Manueller Straßenwechsel bleibt sticky, sonst springt GPS sofort zurück.
+    if (manuellerFokus && (erzwungenerFokus || Date.now() < fokusStickyUntil)) {
+        let focusSticky = waehleStrassenKandidat(pt, manuellerFokus, 2.5);
+        if (focusSticky) {
             erzwungenerFokus = false;
-            return bereichereGpsKandidat(pt, focus);
+            // #region agent log
+            fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:waehleGpsStrassenKandidat',message:'sticky focus kept',data:{fokus:manuellerFokus,dist:focusSticky.dist,untilLeft:Math.max(0,fokusStickyUntil-Date.now())},timestamp:Date.now(),hypothesisId:'H1',runId:'fix4'})}).catch(()=>{});
+            // #endregion
+            return bereichereGpsKandidat(pt, focusSticky);
         }
+    }
+    if (manuellerFokus) {
+        let soft = waehleStrassenKandidat(pt, manuellerFokus, 1.5);
+        if (soft && soft.dist <= 0.85) return bereichereGpsKandidat(pt, soft);
     }
 
     let sorted = kandidaten.slice().sort((a, b) => a.dist - b.dist);
@@ -1301,7 +1317,7 @@ function waehleGpsStrassenKandidat(pt, kandidaten, acc) {
             let prev = bereichereGpsKandidat(pt, prevHit);
             let prevBkm = berechneGoldgriffBKM(pt, prev.name, prev.feature);
             if (prevBkm <= 0) prevBkm = berechneGoldgriffBKM(pt, prev.name, null);
-            if (prevBkm > 0 && Math.abs(prevBkm - lastGpsBkm) < 6 && prev.dist <= best.dist + 0.2) {
+            if (prevBkm > 0 && Math.abs(prevBkm - lastGpsBkm) < 8 && prev.dist <= best.dist + 0.45) {
                 return prev;
             }
         }
@@ -3441,6 +3457,7 @@ function toggleGPS(){
        else info.innerHTML="GPS pausiert.";
     } else {
        if(!navigator.geolocation) return zeigeGpsInfo("GPS nicht unterstützt");
+       if (!geoDatenBereit) return zeigeGpsInfo("⏳ Geo-Daten noch nicht geladen – bitte kurz warten.");
        btn.innerHTML="⏹️ GPS stoppen"; btn.classList.add("active"); zeigeGpsInfo("⏳ Suche Signal...");
         // AM-Grenzen sind als feste Datei geladen; kein Runtime-Build nötig.
         watchId = navigator.geolocation.watchPosition(pos => {
@@ -3493,10 +3510,24 @@ function holeReferenzFuerStrasse(strName) {
 function validiereBkmPlausibilitaet(pt, strName, bkm) {
     if (!(bkm > 0) || !pt) return bkm;
     try {
+        // Nahe Referenzpunkte: Kreuzungen dürfen BKM nicht verwerfen.
+        let refs = holeReferenzFuerStrasse(strName);
+        let naheRef = false;
+        for (let i = 0; i < refs.length; i++) {
+            let d = turf.distance(pt, turf.centroid(refs[i]), { units: "kilometers" });
+            if (d <= 0.6) { naheRef = true; break; }
+        }
         let kmCoord = holeKoordinateFuerKM(strName, bkm, pt);
         if (kmCoord) {
             let abweichM = turf.distance(pt, turf.point(kmCoord), { units: "kilometers" }) * 1000;
-            if (abweichM > 1200) return 0;
+            // #region agent log
+            fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:validiereBkmPlausibilitaet',message:'bkm check',data:{strName,bkm,abweichM:Math.round(abweichM),naheRef},timestamp:Date.now(),hypothesisId:'H3',runId:'fix4'})}).catch(()=>{});
+            // #endregion
+            if (abweichM > 3500 && !naheRef) return 0;
+            if (abweichM > 1200 && !naheRef) {
+                // sanfter: BKM behalten, wenn Abweichung moderat (z.B. AK)
+                return bkm;
+            }
         }
     } catch (e) {}
     return bkm;
@@ -3610,8 +3641,12 @@ function queueVerarbeiteGPS(lat, lon, acc) {
  
 async function verarbeiteGPS(lat, lon, acc){
     letzteLat = lat; letzteLon = lon; letzteAcc = acc;
+    if (!geoDatenBereit || !datenBAB.length) {
+        zeigeGpsInfo("⏳ Geo-Daten noch nicht geladen…");
+        return;
+    }
     const pt = turf.point([lon, lat]);
-    let maxDistGps = berechneGpsMaxDistKm(acc);
+    let maxDistGps = Math.max(berechneGpsMaxDistKm(acc), 0.45);
     
     let sortKandidaten = findeKandidatenFuerPin(pt, maxDistGps, false);
  
@@ -3662,7 +3697,11 @@ async function verarbeiteGPS(lat, lon, acc){
             if (segHit && segHit.feature) bkmFeature = segHit.feature;
             bkm = berechneGoldgriffBKM(pt, strName, bkmFeature);
             if (bkm <= 0) bkm = berechneGoldgriffBKM(pt, strName, null);
+            let bkmRoh = bkm;
             bkm = validiereBkmPlausibilitaet(pt, strName, bkm);
+            // #region agent log
+            fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:verarbeiteGPS',message:'autobahn bkm',data:{strName,bkmRoh,bkm,wache:aktuelleWache},timestamp:Date.now(),hypothesisId:'H3',runId:'fix4'})}).catch(()=>{});
+            // #endregion
             aktiveKM = bkm;
             if (bkm > 0) { lastGpsStrasse = strName; lastGpsBkm = bkm; }
 
@@ -3701,7 +3740,9 @@ async function verarbeiteGPS(lat, lon, acc){
                 letzteKontextMeta.rfApproximiert = false;
             }
 
-            manuellerFokus = strName;
+            if (!(Date.now() < fokusStickyUntil && manuellerFokus && manuellerFokus !== strName)) {
+                manuellerFokus = strName;
+            }
 
             let dirText = "";
             let rfListe = datenWachen[aktuelleWache].richtungen[strName]; 
@@ -3718,7 +3759,9 @@ async function verarbeiteGPS(lat, lon, acc){
 
         } else {
             let station = anwendenLbErgebnis(strName, sel.feature, pt);
-            manuellerFokus = strName;
+            if (!(Date.now() < fokusStickyUntil && manuellerFokus && manuellerFokus !== strName)) {
+                manuellerFokus = strName;
+            }
             aktualisiereKontextAnzeigen({ strName: strName, km: station.stationKm, pt: pt, snapDistM: Math.round(sel.dist * 1000), gpsAccM: acc });
         }
 
@@ -3763,11 +3806,17 @@ async function verarbeiteGPS(lat, lon, acc){
 function wechsleFokus(zielName) {
     manuellerFokus = zielName;
     erzwungenerFokus = true;
+    fokusStickyUntil = Date.now() + 60000;
+    lastGpsStrasse = zielName.startsWith("A") ? zielName : lastGpsStrasse;
     let drop = document.getElementById("autobahn");
     if (Array.from(drop.options).some(o => o.value === zielName)) {
         drop.value = zielName;
         updateUI();
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:wechsleFokus',message:'focus switch',data:{zielName,stickyUntil:fokusStickyUntil},timestamp:Date.now(),hypothesisId:'H1',runId:'fix4'})}).catch(()=>{});
+    // #endregion
+    if (gpsDebounceTimer) { clearTimeout(gpsDebounceTimer); gpsDebounceTimer = null; }
     if (letzteLat !== 0) {
         verarbeiteGPS(letzteLat, letzteLon, letzteAcc);
     } else if (document.getElementById("km").value) {
@@ -4041,6 +4090,10 @@ function waehleStrassenKandidat(pt, zielName, maxDistKm) {
 }
 
 function openMap(mode = 'NK') {
+    if (!geoDatenBereit) {
+        alert("Kartendaten werden noch geladen. Bitte kurz warten und erneut versuchen.");
+        return;
+    }
     schliesseSidebar();
     setzeMenuSichtbarkeit(false);
     entferneDistanzKartenHandler();
@@ -4665,11 +4718,17 @@ function findeAngrenzendeNetzabschnitte(absRaw, aktuellesFeature) {
     let knotenSet = new Set([nk.knotenA, nk.knotenB]);
     let ends = holeLinienEndpunkte(aktuellesFeature);
     if (!ends.length) return [];
+    let aktuellerAbs = holeAbsNetzKey((aktuellesFeature.properties || {}));
     let liste = datenAutobahn.length ? datenAutobahn : datenBAB;
     let treffer = [];
     liste.forEach(f => {
         if (f === aktuellesFeature) return;
-        let other = parseAbschnittNk(holeAbsNetzKey(f.properties));
+        // NK: nur Bestandsachsen – vermeidet übereinanderliegende Haupt-/Nebenachsen
+        if (normalisiereAchse((f.properties || {}).Sk_Achse) !== "Bestandsachse") return;
+        let otherAbs = holeAbsNetzKey(f.properties);
+        // gleiche ABSNr = dieselbe Fahrbahn-Geometrie in anderer Achsenlage → überspringen
+        if (otherAbs && aktuellerAbs && otherAbs === aktuellerAbs) return;
+        let other = parseAbschnittNk(otherAbs);
         if (!other || other.knotenA === "-") return;
         if (!knotenSet.has(other.knotenA) && !knotenSet.has(other.knotenB)) return;
         try {
@@ -4681,6 +4740,23 @@ function findeAngrenzendeNetzabschnitte(absRaw, aktuellesFeature) {
         } catch (e) {}
     });
     return treffer;
+}
+
+function waehleNkKandidat(pt, kandidaten) {
+    if (!kandidaten || !kandidaten.length) return null;
+    let base = waehleKandidatMitFokus(pt, kandidaten, manuellerFokus, 0.05) || kandidaten[0];
+    if (!base) return null;
+    // Netzknoten am Bestandskorridor erfassen (nicht auf RF-Tangenten)
+    let bestand = findeNaechsteStrassenFeature(pt, base.name, "Bestandsachse");
+    if (bestand && bestand.feature && bestand.dist <= Math.max(0.4, base.dist + 0.15)) {
+        return {
+            feature: bestand.feature,
+            dist: bestand.dist,
+            name: base.name,
+            props: bestand.props || (bestand.feature.properties || {})
+        };
+    }
+    return base;
 }
 
 function amNameAnKm(strName, km, pt) {
@@ -5402,14 +5478,26 @@ function openPositionPruefen() {
 }
 
 function calculateMapResult() {
+    if (!geoDatenBereit || !datenBAB.length) {
+        let resDivEarly = document.getElementById('nk-map-result');
+        resDivEarly.innerHTML = `<p style="color:orange; margin:0;">Geo-Daten noch nicht geladen. Bitte warten und erneut versuchen.</p>`;
+        resDivEarly.style.display = 'block';
+        // #region agent log
+        fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:calculateMapResult',message:'geo not ready',data:{geoDatenBereit,datenBAB:datenBAB.length},timestamp:Date.now(),hypothesisId:'H4',runId:'fix4'})}).catch(()=>{});
+        // #endregion
+        return;
+    }
     let pos = map.getCenter(); 
     let ptPin = turf.point([pos.lng, pos.lat]);
-    let maxDist = 0.25;
+    let maxDist = 0.4;
     let priorisiereAutobahn = mapMode === 'KM';
     let kandidaten = findeKandidatenFuerPin(ptPin, maxDist, priorisiereAutobahn);
+    // #region agent log
+    fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:calculateMapResult',message:'map candidates',data:{mapMode,maxDist,count:kandidaten.length,names:kandidaten.slice(0,5).map(k=>k.name+'@'+Math.round(k.dist*1000)+'m')},timestamp:Date.now(),hypothesisId:'H4',runId:'fix4'})}).catch(()=>{});
+    // #endregion
     let sel = mapMode === 'NK'
-        ? waehleKandidatMitFokus(ptPin, kandidaten, manuellerFokus, 0.03)
-        : waehleKandidatMitFokus(ptPin, kandidaten, manuellerFokus, 0.12);
+        ? waehleNkKandidat(ptPin, kandidaten)
+        : waehleKandidatMitFokus(ptPin, kandidaten, null, 0.12);
 
     let resDiv = document.getElementById('nk-map-result');
     if (mapLineLayer) map.removeLayer(mapLineLayer);
@@ -5418,9 +5506,14 @@ function calculateMapResult() {
         let props = sel.feature.properties || {};
         let strName = sel.name;
         let achse = normalisiereAchse(props.Sk_Achse);
-        let rDrop = document.getElementById("richtung");
-        if (rDrop && Array.from(rDrop.options).some(o => o.value === achse)) {
-            rDrop.value = achse;
+        // #region agent log
+        fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:calculateMapResult',message:'nk/km selection',data:{mapMode,strName,achse,abs:props.ABSNr||'',distM:Math.round((sel.dist||0)*1000)},timestamp:Date.now(),hypothesisId:'NK1',runId:'nk-bestand'})}).catch(()=>{});
+        // #endregion
+        if (mapMode !== 'NK') {
+            let rDrop = document.getElementById("richtung");
+            if (rDrop && Array.from(rDrop.options).some(o => o.value === achse)) {
+                rDrop.value = achse;
+            }
         }
 
         if (mapMode === 'NK') {
@@ -5433,7 +5526,11 @@ function calculateMapResult() {
             
             mapLineLayer = L.layerGroup().addTo(map);
             let rawAbs = holeAbsNetzKey(props);
-            findeAngrenzendeNetzabschnitte(rawAbs, sel.feature).forEach(feat => {
+            let angrenzend = findeAngrenzendeNetzabschnitte(rawAbs, sel.feature);
+            // #region agent log
+            fetch('http://127.0.0.1:7933/ingest/03d983ef-0bb6-453f-9301-bdc8e519db9d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'421158'},body:JSON.stringify({sessionId:'421158',location:'index.html:NK lines',message:'adjacent only bestand',data:{selAchse:achse,selAbs:rawAbs,adj:angrenzend.map(f=>({achse:normalisiereAchse((f.properties||{}).Sk_Achse),abs:(f.properties||{}).ABSNr}))},timestamp:Date.now(),hypothesisId:'NK1',runId:'nk-bestand'})}).catch(()=>{});
+            // #endregion
+            angrenzend.forEach(feat => {
                 L.geoJSON(feat, { style: { color: "#dc3545", weight: 3, opacity: 0.85 } }).addTo(mapLineLayer);
             });
             L.geoJSON(sel.feature, { style: { color: "#28a745", weight: 3.5, opacity: 0.9 } }).addTo(mapLineLayer);
@@ -5533,7 +5630,7 @@ function calculateMapResult() {
             closeMap();
         }
     } else {
-       resDiv.innerHTML = `<p style="color:red; margin:0;">Keine Straße im 250m Umkreis gefunden.</p>`;
+       resDiv.innerHTML = `<p style="color:red; margin:0;">Keine Straße im 400m Umkreis gefunden. Karte ggf. genauer auf die Fahrbahn zentrieren.</p>`;
        resDiv.style.display = 'block';
        setTimeout(() => { map.invalidateSize(); }, 20);
     }
